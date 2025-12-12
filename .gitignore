@@ -1,0 +1,115 @@
+# Root .gitignore for espot-browser
+# Focus: Node/Electron (Vite, TypeScript) + Python (FastAPI) + common OS/editor artifacts
+
+# --- OS/Editor ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE/project settings (keep workspace clean; commit only shared configs explicitly)
+.vscode/
+.idea/
+*.code-workspace
+
+# --- Logs & temp files ---
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+debug.log*
+*.pid
+*.pid.lock
+.tmp/
+.temp/
+.cache/
+
+# --- Environment files (keep secrets out of VCS) ---
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# --- Node/JS/TS (monorepo safe) ---
+node_modules/
+**/node_modules/
+
+# Build artifacts
+build/
+**/build/
+dist/
+**/dist/
+.out/
+**/.out/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Vite cache
+.vite/
+**/.vite/
+
+# --- Electron packaging ---
+release/
+**/release/
+out/
+**/out/
+*.asar
+
+# --- Python (FastAPI backend) ---
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Python packaging/build
+*.egg
+*.egg-info/
+**/*.egg-info/
+.eggs/
+build/
+**/build/
+dist/
+**/dist/
+pip-wheel-metadata/
+.installed.cfg
+*.manifest
+*.spec
+
+# Python tooling caches
+.pytest_cache/
+**/.pytest_cache/
+.mypy_cache/
+**/.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Virtual environments (nested-safe)
+venv/
+**/venv/
+.venv/
+**/.venv/
+env/
+**/env/
+
+# --- Supabase (local artifacts; keep actual config in .env) ---
+supabase/.temp/
+supabase/.cache/
+
+# --- Project-specific paths ---
+apps/api/venv/
+apps/desktop-electron/dist/
+apps/desktop-electron/frontend/dist/
+apps/api/src/espot_browser_api.egg-info/
+
+# --- Misc ---
+*.swp
+*.swo
+node_modules

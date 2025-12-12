@@ -1,0 +1,148 @@
+# ESPOT BROWSER – Consolidated Project Document
+
+## Overview
+
+**Project Name:** ESPOT Browser (Ghaffar Project)
+**Type:** Secure Desktop Browser Application with Admin & User Panels
+**Platforms:** Windows (.exe) and macOS (.dmg)
+**Timeline:** 12–14 Weeks
+**Support:** 18 Days Post-Delivery
+**Total Cost:** USD $1,700–$1,800 (based on selected payment model)
+
+The ESPOT Browser is a custom-built desktop application designed for secure, proxy-based browsing that provides enhanced privacy, session management, and role-based access for admins and users. The project merges both versions of the ESPOT proposal, ensuring all technical and functional details are included.
+
+---
+
+## Project Objectives
+
+* Develop a **custom desktop browser** (Windows + optional macOS) that functions like an app, not a traditional browser.
+* Integrate **enterprise-grade proxy routing** and **adaptive privacy protections** (WebRTC/DNS leak prevention, IP masking).
+* Provide **role-based access control** with Admin and User Panels.
+* Enable **credential-based login** with optional cookie management and password autofill.
+* Deliver a **diagnostic dashboard** for network, IP, and proxy validation.
+* Offer **branding flexibility**, multi-device configuration, and integrated credential management.
+
+---
+
+## Core Features
+
+### 🔒 Privacy & Security
+
+* Full **SOCKS5/HTTP proxy support** (client-supplied proxies)
+* **WebRTC and DNS leak protection**
+* **Adaptive fingerprint control** (timezone, UA spoofing, consistency protection)
+* **Diagnostic Dashboard** for IP, Proxy, and Session checks
+* **Password Manager Integration** for secure credential storage (no shared cookies)
+
+### 🧑‍💼 Admin Panel
+
+* Manage users, groups, and assigned proxies
+* Assign login credentials to users (visible or hidden mode)
+* View and control active sessions/devices
+* Force disconnect or restrict users to a single active device
+* Configure multi-device access per user (toggle)
+* Branding options: logo, color scheme, theme
+* Manage search bar availability (enable/disable)
+* Dashboard overview for system usage, sessions, and IP health
+
+### 👤 User Panel
+
+* App-like interface for smooth user experience
+* View assigned services and one-click access
+* Autofill credentials (no visible passwords if restricted)
+* **Gmail priority support** for secure login automation
+* Optional workflow: send **{Start}** message to new numbers (admin toggle)
+* Persistent sessions using locally stored encrypted cache/cookies
+* Device/IP recognition for secure reconnects
+
+---
+
+## Technical Architecture
+
+* **Frontend:** Custom Chromium-based Electron app (cross-platform)
+* **Backend:** Node.js/FastAPI (for Admin control, diagnostics, proxy routing)
+* **Database:** PostgreSQL / SQLite (local credential and session management)
+* **Security:** AES-256 encryption for stored credentials and cookies
+* **Packaging:**
+
+  * Windows: `.exe` installer
+  * macOS: `.dmg` package
+
+---
+
+## Deliverables
+
+* Fully functional **ESPOT Desktop Browser App**
+* Admin Panel (role-based web interface)
+* User Panel (embedded in desktop app)
+* Diagnostic dashboard for proxy, IP, and session validation
+* Branding assets (logo, color theme integration)
+* Windows installer + optional macOS package
+* 18 days of post-delivery support and bug resolution
+
+---
+
+## Timeline Breakdown
+
+| Weeks | Milestone                           | Description                                                               |
+| ----- | ----------------------------------- | ------------------------------------------------------------------------- |
+| 1–3   | Base Browser & Proxy Integration    | Core engine setup, proxy routing, leak protection architecture            |
+| 4–6   | Leak Protection & Gmail Integration | Implement WebRTC/DNS protection, Gmail priority login, autofill workflows |
+| 7–10  | Admin & User Panels                 | Develop, connect, and test both panels with database and API integration  |
+| 10–11 | Installer & Internal QA             | Package for Windows/macOS, run end-to-end testing                         |
+| 11–12 | Pilot Phase & Final Delivery        | Client testing, debugging, final deployment                               |
+
+---
+
+## Payment Structure Options
+
+**Option A (from original version A):**
+
+* Total: $1,800
+* 70% upfront, 30% on final delivery
+
+**Option B (from revised version B):**
+
+* Total: $1,700
+* 50% upfront
+* 20% after leak protection + Gmail integration milestone
+* 30% on final delivery
+
+---
+
+## Support & Maintenance
+
+* **Free support period:** 18 days after final delivery
+* **Extended support:** available at additional cost per agreed hourly/monthly rate
+* **Maintenance scope:** bug fixes, security patches, proxy logic adjustments
+
+---
+
+## Notes & Disclaimers
+
+* Client will provide proxy servers and test credentials for integration.
+* ESPOT Browser reduces detection risk but does **not guarantee 100% invisibility**.
+* Certain domains (e.g., dat.com, Envato Elements) may remain restricted.
+* Any additional features or changes not covered in this document will incur extra cost.
+* Support for **RingCentral and other dialers** is optional; client must provide test accounts.
+
+---
+
+## Workflow for AI & Cursor Context
+
+This document provides full technical and functional context for building and automating ESPOT Browser inside Cursor AI. Use this to:
+
+1. **Initialize architecture setup:** Configure FastAPI backend + Electron front-end with secure proxy management.
+2. **Implement Admin/User RBAC:** Database schema for users, proxies, and credential assignments.
+3. **Integrate Diagnostics:** Build a module to verify active IP, DNS, WebRTC leaks, and proxy status.
+4. **Add Privacy Controls:** Adaptive fingerprint, DNS/WebRTC disable modules.
+5. **Embed Credential Autofill:** Local encrypted storage with admin visibility toggle.
+6. **Packaging:** Generate Windows `.exe` and macOS `.dmg`.
+7. **Testing & Pilot:** Simulate sessions, proxy changes, and login automations.
+8. **Deployment:** Deliver final installer and documentation.
+
+---
+
+## Final Notes
+
+This merged version serves as the **complete and authoritative specification** for the ESPOT Browser project. It combines every element of both original files—technical, financial, and operational—into one unified context for AI-assisted development and team collaboration.
