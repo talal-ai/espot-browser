@@ -39,9 +39,23 @@ class UserResponse(BaseModel):
     username: str
     role: str
 
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 def hash_password(password: str) -> str:
-    """Hash password using SHA-256"""
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Hash password using bcrypt"""
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify password using bcrypt"""
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception:
+        # Fallback for old SHA-256 hashes if any
+        import hashlib
+        old_hash = hashlib.sha256(plain_password.encode()).hexdigest()
+        return old_hash == hashed_password
 
 def generate_token() -> str:
     """Generate a secure random token"""
@@ -60,54 +74,99 @@ async def verify_token(request: Request, credentials: HTTPAuthorizationCredentia
         # 1. Verify JWT signature and claims
         payload = await decode_token(token)
         
-        # 2. Check session validity in database (Force Logout support)
-        try:
-            token_hash = hashlib.sha256(token.encode()).hexdigest()
-            # Check if session exists and is active
-            result = supabase_service.client.table("user_sessions").select("is_active,terminated").eq("session_token", token_hash).limit(1).execute()
-            
-            if result.data:
-                session_record = result.data[0]
-                if not session_record.get("is_active") or session_record.get("terminated"):
-                    logger.warning(f"Session terminated/inactive for user {payload.get('sub')}")
+        # 2. Determine if this is a Supabase OAuth token (Google, etc.) or a local token
+        # Supabase tokens have 'iss' (issuer) containing 'supabase'
+        issuer = payload.get("iss", "")
+        is_supabase_oauth = "supabase" in issuer.lower()
+        
+        # Extract user ID from token (Supabase uses 'sub' field)
+        auth_user_id = payload.get("sub") or payload.get("user_id")
+        
+        # 3. Check session validity in database (Force Logout support)
+        # SKIP session check for Supabase OAuth tokens - they're managed by Supabase
+        if not is_supabase_oauth:
+            try:
+                token_hash = hashlib.sha256(token.encode()).hexdigest()
+                # Check if session exists and is active
+                result = supabase_service.client.table("user_sessions").select("is_active,terminated").eq("session_token", token_hash).limit(1).execute()
+                
+                if result.data:
+                    session_record = result.data[0]
+                    if not session_record.get("is_active") or session_record.get("terminated"):
+                        logger.warning(f"Session terminated/inactive for user {auth_user_id}")
+                        raise HTTPException(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Session has been terminated. Please login again."
+                        )
+                else:
+                    # No session found for local token - this shouldn't happen for properly logged-in users
+                    logger.warning(f"No session record found for token user {auth_user_id}")
                     raise HTTPException(
                         status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="Session has been terminated. Please login again."
+                        detail="Invalid session"
                     )
-            else:
-                # Optional: If strictly enforcing sessions, reject if not found. 
-                # For backward compatibility, one might allow it, but for 'Force Logout' to work reliably, we must enforce it.
-                # Assuming all valid logins now create sessions.
-                logger.warning(f"No session record found for token user {payload.get('sub')}")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Session validation error: {e}")
+                # Fail closed for security
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid session"
+                    detail="Session validation failed"
                 )
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Session validation error: {e}")
-            # Fail closed for security
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session validation failed"
-            )
+        else:
+            logger.debug(f"Skipping session check for Supabase OAuth token (auth_user_id: {auth_user_id})")
 
+        # 4. Build user dict from token payload
         user_dict = {
-            "id": payload.get("sub") or payload.get("user_id"),
+            "id": auth_user_id,
             "email": payload.get("email"),
-            "username": payload.get("username") or payload.get("user_metadata", {}).get("username"),
+            "username": payload.get("username") or payload.get("user_metadata", {}).get("username") or payload.get("email", "").split("@")[0],
             "role": payload.get("role"),
         }
-        if not user_dict.get("role") and user_dict.get("id"):
+        
+        # 5. For OAuth users, look up by auth_user_id to get public.users data
+        if is_supabase_oauth and auth_user_id:
             try:
-                # Fetch role from DB when Supabase JWT lacks role claim
+                # OAuth users are linked via auth_user_id column
+                resp = supabase_service.client.table("users").select("id,role,email,username,provider").eq("auth_user_id", auth_user_id).limit(1).execute()
+                if resp.data and len(resp.data) > 0:
+                    dbu = resp.data[0]
+                    # Update user_dict with database info
+                    user_dict = {
+                        "id": dbu.get("id"),  # Use public.users.id for consistency
+                        "auth_user_id": auth_user_id,  # Keep auth_user_id for reference
+                        "role": dbu.get("role"),
+                        "email": dbu.get("email"),
+                        "username": dbu.get("username"),
+                        "provider": dbu.get("provider"),
+                    }
+                    logger.debug(f"OAuth user found in database: {user_dict['email']}")
+                else:
+                    # OAuth user not in database - this shouldn't happen with the trigger
+                    logger.warning(f"OAuth user not found in public.users: {auth_user_id}")
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="User account not found. Please contact administrator."
+                    )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error fetching OAuth user from database: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Failed to validate user account"
+                )
+        elif not user_dict.get("role") and user_dict.get("id"):
+            # For local tokens, try to fetch additional data by public.users.id
+            try:
                 resp = supabase_service.client.table("users").select("id,role,email,username").eq("id", user_dict["id"]).limit(1).execute()
                 if resp.data:
                     dbu = resp.data[0]
                     user_dict.update({"role": dbu.get("role"), "email": dbu.get("email"), "username": dbu.get("username")})
             except Exception:
                 pass
+        
         user_dict["role"] = user_dict.get("role") or "user"
         return user_dict
     except HTTPException:
@@ -142,8 +201,7 @@ async def login(request: LoginRequest, http_request: Request):
         user = result.data[0]
         
         # Verify password
-        hashed_password = hash_password(request.password)
-        if user.get("password_hash") != hashed_password:
+        if not verify_password(request.password, user.get("password_hash", "")):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid credentials"
@@ -322,6 +380,10 @@ async def logout(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """
     Logout user and invalidate token
     """
+    if not credentials or not getattr(credentials, "credentials", None):
+        # No token provided, but that's okay for logout
+        return {"message": "Logged out successfully"}
+    
     token = credentials.credentials
     try:
         token_hash = hashlib.sha256(token.encode()).hexdigest()

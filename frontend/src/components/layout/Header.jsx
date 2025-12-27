@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { Sun, Moon, Bell, Search, LogOut, User } from 'lucide-react';
+import { Sun, Moon, Bell, Search, LogOut, User, Mail } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import {
@@ -19,9 +19,23 @@ const Header = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
+  // Check if user signed in with Google OAuth
+  const isGoogleUser = user?.provider === 'google' || user?.app_metadata?.provider === 'google';
+
   const handleLogout = async () => {
     await logout();
     navigate('/auth');
+  };
+
+  // Open Gmail in a new window - uses the existing Google session
+  const openGmail = () => {
+    // Use Electron IPC to open Gmail (preserves Google session from OAuth)
+    if (window.electron?.window?.openUrl) {
+      window.electron.window.openUrl('https://mail.google.com');
+    } else {
+      // Fallback for web browser
+      window.open('https://mail.google.com', '_blank');
+    }
   };
 
   return (
@@ -53,6 +67,19 @@ const Header = () => {
               <Moon className="w-5 h-5 text-blue-600" />
             )}
           </Button>
+
+          {/* Gmail Button - Only shown for Google OAuth users */}
+          {isGoogleUser && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={openGmail}
+              title="Open Gmail"
+              className="relative hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200 group"
+            >
+              <Mail className="w-5 h-5 text-red-500 group-hover:text-red-600 transition-colors" />
+            </Button>
+          )}
 
           <Button
             variant="ghost"

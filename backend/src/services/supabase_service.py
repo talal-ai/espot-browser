@@ -116,15 +116,23 @@ class SupabaseService:
             raise
     
     async def get_user(self, user_id: str) -> Optional[User]:
-        """Get user by ID"""
+        """Get user by ID or auth_user_id"""
         if self.is_dev_mode:
             return await dev_service.get_user(user_id)
         
         try:
+            # First try to get user by primary id
             response = self.client.table("users").select("*").eq("id", user_id).execute()
             
             if response.data:
                 return User(**response.data[0])
+            
+            # If not found, try auth_user_id (for Google OAuth users)
+            response = self.client.table("users").select("*").eq("auth_user_id", user_id).execute()
+            
+            if response.data:
+                return User(**response.data[0])
+            
             return None
             
         except Exception as e:
@@ -1049,6 +1057,61 @@ class SupabaseService:
             return len(response.data or []) > 0
         except Exception as e:
             logger.error(f"Error checking user service access: {e}")
+            return False
+    
+    # Storage Management for Chat Attachments
+    async def upload_chat_attachment(self, file_data: bytes, file_name: str, conversation_id: str, message_id: str, content_type: str) -> str:
+        """Upload a chat attachment to Supabase Storage"""
+        try:
+            # Create path: chat-attachments/{conversationId}/{messageId}-{filename}
+            file_path = f"{conversation_id}/{message_id}-{file_name}"
+            
+            # Upload to Supabase Storage
+            response = self.admin_client.storage.from_("chat-attachments").upload(
+                path=file_path,
+                file=file_data,
+                file_options={"content-type": content_type}
+            )
+            
+            if response:
+                logger.info(f"Uploaded attachment: {file_path}")
+                return file_path
+            else:
+                raise Exception("Upload failed - no response")
+                
+        except Exception as e:
+            logger.error(f"Failed to upload attachment: {str(e)}")
+            raise Exception(f"Upload failed: {str(e)}")
+    
+    async def get_attachment_signed_url(self, file_path: str, expires_in: int = 3600) -> str:
+        """Get a signed URL for accessing a chat attachment"""
+        try:
+            response = self.admin_client.storage.from_("chat-attachments").create_signed_url(
+                path=file_path,
+                expires_in=expires_in  # Default 1 hour
+            )
+            
+            if response and "signedURL" in response:
+                return response["signedURL"]
+            else:
+                raise Exception("Failed to create signed URL")
+                
+        except Exception as e:
+            logger.error(f"Failed to create signed URL: {str(e)}")
+            raise Exception(f"Signed URL creation failed: {str(e)}")
+    
+    async def delete_attachment(self, file_path: str) -> bool:
+        """Delete a chat attachment from storage"""
+        try:
+            response = self.admin_client.storage.from_("chat-attachments").remove([file_path])
+            
+            if response:
+                logger.info(f"Deleted attachment: {file_path}")
+                return True
+            return False
+                
+        except Exception as e:
+            logger.error(f"Failed to delete attachment: {str(e)}")
             return False
 
 # Global service instance

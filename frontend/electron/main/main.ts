@@ -8,8 +8,13 @@ const API_BASE_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:
 
 // Check if in development mode
 const isDev = process.env.NODE_ENV === 'development';
-process.env.STRICT_WEBRTC = process.env.STRICT_WEBRTC || '1';
-const STRICT_WEBRTC_ENABLED = process.env.STRICT_WEBRTC === '1';
+// DISABLED: Browser feature restrictions (was causing Google login issues)
+// process.env.STRICT_WEBRTC = process.env.STRICT_WEBRTC || '1';
+// const STRICT_WEBRTC_ENABLED = process.env.STRICT_WEBRTC === '1';
+const STRICT_WEBRTC_ENABLED = false; // Disabled for Google login compatibility
+
+// Chrome User Agent (stealth files deleted, keeping just the UA)
+const CHROME_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Crash handlers to debug ACCESS_VIOLATION errors
 process.on('uncaughtException', (error) => {
@@ -28,18 +33,9 @@ app.on('child-process-gone', (event, details) => {
   console.error('[ESPOT] Child process gone:', details);
 });
 
-// HIDE ELECTRON IDENTITY FROM GOOGLE
-app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
-app.commandLine.appendSwitch('disable-features', 'CrossOriginOpenerPolicy');
-app.commandLine.appendSwitch('no-sandbox'); // Sometimes helps, but be careful
-// Mask the User Agent to look like a regular Chrome browser
-const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-app.userAgentFallback = userAgent;
-
-if (STRICT_WEBRTC_ENABLED) {
-  app.commandLine.appendSwitch('disable-webrtc');
-  app.commandLine.appendSwitch('force-webrtc-ip-handling-policy', 'disable_non_proxied_udp');
-}
+// NOTE: NO command line switches or global user agent
+// The working app doesn't use these - they trigger Google detection
+// Stealth is applied per-window in the IPC handlers instead
 
 // Global reference to mainWindow to prevent garbage collection
 let mainWindow: BrowserWindow | null = null;
@@ -165,9 +161,64 @@ function createMainWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Check if this is a Google URL
+    const isGoogleUrl = url.includes('google.com') ||
+      url.includes('accounts.google.com') ||
+      url.includes('googleapis.com');
+
     // Create child window with spoofing if we have an active profile
     (async () => {
       try {
+        // For Google URLs, use stealth window (same as working app)
+        if (isGoogleUrl) {
+          console.log('[ESPOT] Opening Google URL with stealth window:', url);
+          const googleChild = new BrowserWindow({
+            width: 600,
+            height: 700,
+            show: true,
+            webPreferences: {
+              nodeIntegration: false,
+              contextIsolation: true,
+              preload: path.join(__dirname, 'preload.js'),
+              spellcheck: false,
+              devTools: isDev,
+              webSecurity: true,  // Keep enabled for Google trust
+              userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            },
+          });
+
+          // Inject stealth headers for ALL URLs
+          googleChild.webContents.session.webRequest.onBeforeSendHeaders(
+            { urls: ['<all_urls>'] },
+            (details, callback) => {
+              details.requestHeaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+              details.requestHeaders['Accept-Language'] = 'en-US,en;q=0.9';
+              details.requestHeaders['Sec-Ch-Ua'] = '"Not_A Brand";v="8", "Chromium";v="131", "Google Chrome";v="131"';
+              details.requestHeaders['Sec-Ch-Ua-Mobile'] = '?0';
+              details.requestHeaders['Sec-Ch-Ua-Platform'] = '"Windows"';
+              details.requestHeaders['Sec-Fetch-Site'] = 'none';
+              details.requestHeaders['Sec-Fetch-Mode'] = 'navigate';
+              details.requestHeaders['Sec-Fetch-User'] = '?1';
+              details.requestHeaders['Sec-Fetch-Dest'] = 'document';
+              callback({ requestHeaders: details.requestHeaders });
+            }
+          );
+
+          // Stealth script - compact version
+          const script = `(function(){delete window.require;delete window.exports;delete window.module;delete window.process;delete window.Buffer;delete window.global;Object.defineProperty(navigator,'platform',{get:()=>'Win32',configurable:false});Object.defineProperty(navigator,'vendor',{get:()=>'Google Inc.',configurable:false});Object.defineProperty(navigator,'webdriver',{get:()=>undefined,configurable:false});if(!window.chrome)window.chrome={runtime:{},loadTimes:function(){},csi:function(){},app:{}};})();`;
+
+          googleChild.webContents.on('dom-ready', () => {
+            googleChild.webContents.executeJavaScript(script).catch(() => { });
+          });
+
+          googleChild.webContents.on('did-finish-load', () => {
+            googleChild.webContents.executeJavaScript(script).catch(() => { });
+          });
+
+          googleChild.loadURL(url);
+          return;
+        }
+
         if (activeProfile) {
           // ✅ Apply fingerprint spoofing to child window!
           console.log('[ESPOT] Opening child window with spoofing profile:', activeProfile.id);
@@ -408,6 +459,68 @@ function setupIpcHandlers() {
     child.loadURL(url);
   });
 
+  // Clear app cache, cookies, and storage (useful when Google shows cookie errors)
+  ipcMain.handle('app:clearCache', async () => {
+    try {
+      console.log('[ESPOT] Clearing app cache, cookies, and storage...');
+
+      // 1) Clear default session storage (cookies, localStorage, etc.)
+      try {
+        await session.defaultSession.clearStorageData();
+        await session.defaultSession.clearCache();
+        console.log('[ESPOT] Default session storage and cache cleared');
+      } catch (err) {
+        console.warn('[ESPOT] Warning clearing default session:', err);
+      }
+
+      // 2) Flush any cookies to disk then remove cookie store entries
+      try {
+        await session.defaultSession.cookies.flushStore();
+        const cookies = await session.defaultSession.cookies.get({});
+        for (const c of cookies) {
+          await session.defaultSession.cookies.remove((c.secure ? 'https://' : 'http://') + c.domain + (c.path || '/'), c.name).catch(() => { });
+        }
+        console.log('[ESPOT] Cookies removed from default session');
+      } catch (err) {
+        console.warn('[ESPOT] Warning removing cookies:', err);
+      }
+
+      // 3) Remove userData cache folders on disk (best-effort)
+      try {
+        const userDataPath = app.getPath('userData');
+        const cachePath = path.join(userDataPath, 'Cache');
+        const GPUCache = path.join(userDataPath, 'GPUCache');
+        const storages = [cachePath, GPUCache];
+        const fs = await import('fs');
+        for (const p of storages) {
+          try {
+            if (fs.existsSync(p)) {
+              // remove recursively
+              fs.rmSync(p, { recursive: true, force: true });
+              console.log('[ESPOT] Removed', p);
+            }
+          } catch (err) {
+            console.warn('[ESPOT] Warning removing folder', p, err);
+          }
+        }
+      } catch (err) {
+        console.warn('[ESPOT] Warning cleaning userData cache folders:', err);
+      }
+
+      // 4) Optionally reload main window to apply changes
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.reload();
+        }
+      } catch { }
+
+      return { success: true };
+    } catch (err) {
+      console.error('[ESPOT] Error in app:clearCache handler:', err);
+      return { success: false, error: String(err) };
+    }
+  });
+
   // Admin API
   ipcMain.handle('admin:getUsers', async () => {
     // TODO: Implement API call to backend
@@ -634,6 +747,173 @@ function setupIpcHandlers() {
   ipcMain.handle('system:getHealth', async () => {
     // TODO: Implement API call to backend
     return { success: true, data: { status: 'healthy' } };
+  });
+
+  // ============================================================================
+  // GOOGLE AUTH HANDLERS (Stealth files deleted)
+  // ============================================================================
+
+  /**
+   * Open Google OAuth with stealth techniques (from working app)
+   * Uses Chrome headers + script injection to bypass Google detection
+   */
+  ipcMain.handle('google:openAuth', async (_, url: string) => {
+    try {
+      console.log('[Google] Opening stealth auth window for:', url);
+
+      const authWindow = new BrowserWindow({
+        width: 600,
+        height: 700,
+        resizable: true,
+        minimizable: false,
+        maximizable: false,
+        title: 'Sign in with Google',
+        show: true,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          // CRITICAL: Keep webSecurity enabled - Google trusts this more
+          webSecurity: true,
+          // Use Chrome user agent
+          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        },
+      });
+
+      // CRITICAL: Inject Chrome Client Hints headers (Google checks these)
+      // Apply to ALL requests in this window's session
+      authWindow.webContents.session.webRequest.onBeforeSendHeaders(
+        { urls: ['<all_urls>'] },  // Explicitly apply to all URLs
+        (details, callback) => {
+          details.requestHeaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+          details.requestHeaders['Accept-Language'] = 'en-US,en;q=0.9';
+          details.requestHeaders['Sec-Ch-Ua'] = '"Not_A Brand";v="8", "Chromium";v="131", "Google Chrome";v="131"';
+          details.requestHeaders['Sec-Ch-Ua-Mobile'] = '?0';
+          details.requestHeaders['Sec-Ch-Ua-Platform'] = '"Windows"';
+          details.requestHeaders['Sec-Fetch-Site'] = 'none';
+          details.requestHeaders['Sec-Fetch-Mode'] = 'navigate';
+          details.requestHeaders['Sec-Fetch-User'] = '?1';
+          details.requestHeaders['Sec-Fetch-Dest'] = 'document';
+          callback({ requestHeaders: details.requestHeaders });
+        }
+      );
+
+      // JavaScript to inject - removes ALL Electron traces
+      const stealthScript = `
+        (function() {
+          // Remove Electron-specific objects
+          delete window.require;
+          delete window.exports;
+          delete window.module;
+          delete window.process;
+          delete window.Buffer;
+          delete window.global;
+          delete window.setImmediate;
+          delete window.clearImmediate;
+          
+          // Override navigator properties
+          Object.defineProperty(navigator, 'platform', {
+            get: () => 'Win32',
+            configurable: false
+          });
+          
+          Object.defineProperty(navigator, 'vendor', {
+            get: () => 'Google Inc.',
+            configurable: false
+          });
+          
+          Object.defineProperty(navigator, 'userAgent', {
+            get: () => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            configurable: false
+          });
+          
+          Object.defineProperty(navigator, 'webdriver', {
+            get: () => undefined,
+            configurable: false
+          });
+          
+          Object.defineProperty(navigator, 'appVersion', {
+            get: () => '5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            configurable: false
+          });
+          
+          // Add window.chrome object
+          if (!window.chrome) {
+            window.chrome = {
+              runtime: {},
+              loadTimes: function() {
+                return {
+                  commitLoadTime: Date.now() / 1000,
+                  connectionInfo: 'h2',
+                  finishDocumentLoadTime: Date.now() / 1000,
+                  finishLoadTime: Date.now() / 1000,
+                  firstPaintTime: Date.now() / 1000,
+                  navigationType: 'Other',
+                  requestTime: Date.now() / 1000 - 0.1,
+                  startLoadTime: Date.now() / 1000 - 0.1
+                };
+              },
+              csi: function() {
+                return {
+                  onloadT: Date.now(),
+                  pageT: Date.now(),
+                  startE: Date.now(),
+                  tran: 15
+                };
+              },
+              app: {}
+            };
+          }
+        })();
+      `;
+
+      // Inject on both dom-ready (fast) and did-finish-load (complete)
+      authWindow.webContents.on('dom-ready', () => {
+        authWindow.webContents.executeJavaScript(stealthScript).catch(() => { });
+      });
+
+      authWindow.webContents.on('did-finish-load', () => {
+        authWindow.webContents.executeJavaScript(stealthScript).catch(() => { });
+      });
+
+      authWindow.loadURL(url);
+
+      // Return window ID so renderer can track it
+      return {
+        success: true,
+        windowId: authWindow.id,
+        message: 'Google auth window opened'
+      };
+    } catch (error) {
+      console.error('[Google] Error opening auth window:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  });
+
+  /**
+   * Clear Google session (logout from Google services)
+   * Stealth files deleted - using standard session clearing
+   */
+  ipcMain.handle('google:clearSession', async () => {
+    try {
+      // Clear cookies and storage for Google domains
+      await session.defaultSession.clearStorageData({
+        origin: 'https://accounts.google.com',
+      });
+      await session.defaultSession.clearStorageData({
+        origin: 'https://google.com',
+      });
+      console.log('[Google] Session cleared');
+      return { success: true, message: 'Google session cleared' };
+    } catch (error) {
+      console.error('[Google] Error clearing session:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
   });
 
   // ============================================================================
@@ -1604,38 +1884,43 @@ function getAllUserSessions(): Array<{ userId: string; hasProxy: boolean; proxyH
 
   return sessions;
 }
-function hardenWebRTC(win: BrowserWindow) {
-  const script = `
-    (function(){
-      var block = function(){ throw new Error('WebRTC is disabled'); };
-      try { Object.defineProperty(window, 'RTCPeerConnection', { get: function(){ return block; }, set: function(){}, configurable: false }); } catch(e) {}
-      try { Object.defineProperty(window, 'webkitRTCPeerConnection', { get: function(){ return block; }, set: function(){}, configurable: false }); } catch(e) {}
-      try { Object.defineProperty(window, 'RTCDataChannel', { get: function(){ return undefined; }, set: function(){}, configurable: false }); } catch(e) {}
-      try { Object.defineProperty(window, 'RTCIceCandidate', { get: function(){ return undefined; }, set: function(){}, configurable: false }); } catch(e) {}
-      try { Object.defineProperty(window, 'RTCSessionDescription', { get: function(){ return undefined; }, set: function(){}, configurable: false }); } catch(e) {}
-      if (navigator && navigator.mediaDevices) {
-        try { navigator.mediaDevices.getUserMedia = function(){ return Promise.reject(new Error('Media access disabled')); }; } catch(e) {}
-      }
-    })();
-  `;
-  win.webContents.on('dom-ready', () => {
-    win.webContents.executeJavaScript(script, true);
-  });
+// DISABLED: WebRTC hardening (was causing Google login issues)
+// function hardenWebRTC(win: BrowserWindow) {
+//   const script = `
+//     (function(){
+//       var block = function(){ throw new Error('WebRTC is disabled'); };
+//       try { Object.defineProperty(window, 'RTCPeerConnection', { get: function(){ return block; }, set: function(){}, configurable: false }); } catch(e) {}
+//       try { Object.defineProperty(window, 'webkitRTCPeerConnection', { get: function(){ return block; }, set: function(){}, configurable: false }); } catch(e) {}
+//       try { Object.defineProperty(window, 'RTCDataChannel', { get: function(){ return undefined; }, set: function(){}, configurable: false }); } catch(e) {}
+//       try { Object.defineProperty(window, 'RTCIceCandidate', { get: function(){ return undefined; }, set: function(){}, configurable: false }); } catch(e) {}
+//       try { Object.defineProperty(window, 'RTCSessionDescription', { get: function(){ return undefined; }, set: function(){}, configurable: false }); } catch(e) {}
+//       if (navigator && navigator.mediaDevices) {
+//         try { navigator.mediaDevices.getUserMedia = function(){ return Promise.reject(new Error('Media access disabled')); }; } catch(e) {}
+//       }
+//     })();
+//   `;
+//   win.webContents.on('dom-ready', () => {
+//     win.webContents.executeJavaScript(script, true);
+//   });
+// }
+function hardenWebRTC(_win: BrowserWindow) {
+  // Disabled for Google login compatibility
 }
 
-function applyStrictPermissions(ses: any) {
-  try {
-    // Allow most permissions but block dangerous ones
-    ses.setPermissionRequestHandler((_wc: any, permission: string, callback: (allow: boolean) => void) => {
-      // Block only truly dangerous permissions
-      const blockedPermissions = ['media', 'geolocation', 'notifications'];
-      if (blockedPermissions.includes(permission)) {
-        callback(false);
-      } else {
-        // Allow everything else (needed for Google login, etc.)
-        callback(true);
-      }
-    });
-  } catch { }
+// DISABLED: Permission blocking (was causing Google login issues)
+// function applyStrictPermissions(ses: any) {
+//   try {
+//     ses.setPermissionRequestHandler((_wc: any, permission: string, callback: (allow: boolean) => void) => {
+//       const blockedPermissions = ['media', 'geolocation', 'notifications'];
+//       if (blockedPermissions.includes(permission)) {
+//         callback(false);
+//       } else {
+//         callback(true);
+//       }
+//     });
+//   } catch { }
+// }
+function applyStrictPermissions(_ses: any) {
+  // Disabled for Google login compatibility - allow all permissions
 }
 

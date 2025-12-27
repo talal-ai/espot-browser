@@ -28,12 +28,37 @@ export const AuthProvider = ({ children }) => {
         if (event === "SIGNED_IN" && session) {
           // Persist token for API requests
           localStorage.setItem("auth_token", session.access_token);
-          let enriched = session.user;
-          try {
-            const me = await authService.getCurrentUser();
-            if (me && me.id) enriched = { ...session.user, ...me };
-          } catch {}
-          setUser(enriched);
+
+          // Build user object from Supabase session
+          const supabaseUser = session.user;
+          let enrichedUser = {
+            id: supabaseUser.id,
+            email: supabaseUser.email,
+            username: supabaseUser.user_metadata?.username || supabaseUser.user_metadata?.full_name || supabaseUser.email?.split('@')[0],
+            role: supabaseUser.user_metadata?.role || 'user',
+            avatar_url: supabaseUser.user_metadata?.avatar_url,
+            provider: supabaseUser.app_metadata?.provider || 'email',
+          };
+
+          // Only try to fetch from backend if NOT an OAuth provider (Google, etc.)
+          // OAuth users are managed by Supabase, not our backend
+          const isOAuthUser = ['google', 'github', 'discord'].includes(enrichedUser.provider);
+
+          if (!isOAuthUser) {
+            // For email/password users, try to get additional data from backend
+            try {
+              const me = await authService.getCurrentUser();
+              if (me && me.id) {
+                enrichedUser = { ...enrichedUser, ...me };
+              }
+            } catch (err) {
+              console.log('[AuthContext] Backend /auth/me failed, using Supabase data only:', err.message);
+            }
+          } else {
+            console.log('[AuthContext] OAuth user detected, using Supabase data only (provider:', enrichedUser.provider + ')');
+          }
+
+          setUser(enrichedUser);
           setIsAuthenticated(true);
         } else if (event === "SIGNED_OUT") {
           localStorage.removeItem("auth_token");
@@ -55,7 +80,7 @@ export const AuthProvider = ({ children }) => {
     const onForcedLogout = async () => {
       try {
         toast({ title: "Session Terminated", description: "You have been logged out.", variant: "destructive" });
-      } catch {}
+      } catch { }
       await logout();
       window.location.assign("/auth");
     };
@@ -71,7 +96,7 @@ export const AuthProvider = ({ children }) => {
       try {
         const digest = await crypto.subtle.digest("SHA-256", data);
         tokenHash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
-      } catch {}
+      } catch { }
 
       const channel = supabase
         .channel("own_session_watch")
@@ -86,7 +111,7 @@ export const AuthProvider = ({ children }) => {
       return () => {
         try {
           supabase.removeChannel(channel);
-        } catch {}
+        } catch { }
       };
     };
 
@@ -111,7 +136,7 @@ export const AuthProvider = ({ children }) => {
         try {
           const me = await authService.getCurrentUser();
           if (me && me.id) enriched = { ...data.session.user, ...me };
-        } catch {}
+        } catch { }
         setUser(enriched);
         setIsAuthenticated(true);
         return;
@@ -176,7 +201,7 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       setIsAuthenticated(false);
       localStorage.removeItem("auth_token");
-      try { sessionStorage.clear(); } catch {}
+      try { sessionStorage.clear(); } catch { }
     }
   };
 

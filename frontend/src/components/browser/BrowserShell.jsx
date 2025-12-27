@@ -3,16 +3,23 @@ import TabBar from './TabBar';
 import BrowserToolbar from './BrowserToolbar';
 import WebView from './WebView';
 import { useBrowser } from '../../contexts/BrowserContext';
+import { useAuth } from '../../contexts/AuthContext';
 
 const BrowserShell = ({ children }) => {
     const { tabs, activeTabId, webviewRefs, openTab, closeTab, switchToTab, updateTab } = useBrowser();
+    const { user } = useAuth();
+
+    // Check if user is signed in via Google OAuth
+    // If so, we want to share the main session (cookies) with the browser tabs
+    const isGoogleUser = user?.provider === 'google' || user?.app_metadata?.provider === 'google';
 
     const activeTab = tabs.find(t => t.id === activeTabId);
 
     const handleNewTab = () => {
         openTab({
             url: 'https://www.google.com',
-            title: 'New Tab'
+            title: 'New Tab',
+            userId: user?.id  // Pass user ID for session sharing
         });
     };
 
@@ -118,8 +125,11 @@ const BrowserShell = ({ children }) => {
                         <WebView
                             ref={el => webviewRefs.current[tab.id] = el}
                             url={tab.url}
+                            userId={tab.userId}
                             isActive={activeTabId === tab.id}
-                            partition={'persist:' + tab.id}
+                            // If Google user, use default session (null) to share cookies
+                            // Otherwise, maintain isolation per tab
+                            partition={isGoogleUser ? null : 'persist:' + tab.id}
                             userAgent={tab.userAgent}
                             onTitleChange={(title) => updateTabState(tab.id, { title })}
                             onUrlChange={(url) => updateTabState(tab.id, { url })}

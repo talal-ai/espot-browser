@@ -35,7 +35,7 @@ async def list_conversations(status: Optional[str] = None, limit: int = 50) -> L
         unique.append(c)
     return unique
 
-async def add_message(conversation_id: str, sender_id: str, sender_role: str, ciphertext: str, nonce: str, content_type: str = "text") -> Dict[str, Any]:
+async def add_message(conversation_id: str, sender_id: str, sender_role: str, ciphertext: str, nonce: str, content_type: str = "text", attachment_url: str = None, attachment_type: str = None, file_size: int = None) -> Dict[str, Any]:
     payload = {
         "conversation_id": conversation_id,
         "sender_id": sender_id,
@@ -47,6 +47,14 @@ async def add_message(conversation_id: str, sender_id: str, sender_role: str, ci
         "created_at": datetime.utcnow().isoformat(),
         "delivered_at": datetime.utcnow().isoformat(),
     }
+    # Add attachment fields if provided
+    if attachment_url:
+        payload["attachment_url"] = attachment_url
+    if attachment_type:
+        payload["attachment_type"] = attachment_type
+    if file_size:
+        payload["file_size"] = file_size
+    
     res = supabase_service.admin_client.table("chat_messages").insert(payload).execute()
     return res.data[0]
 

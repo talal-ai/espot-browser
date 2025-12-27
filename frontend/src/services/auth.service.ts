@@ -1,124 +1,190 @@
-import axios from 'axios';
-import { API_CONFIG } from '../config/api.config';
-import { supabase, getAuthRedirectUrl } from '../lib/supabase';
+/**
+ * Authentication Service
+ * Provides authentication methods using Supabase Auth.
+ * 
+ * Supports:
+ * - Email/password login and signup
+ * - Google OAuth (using PKCE flow for Electron)
+ * - Session management
+ */
 
-const API_URL = API_CONFIG.baseURL;
+import { supabase } from '../lib/supabase';
 
-export interface LoginRequest {
-  emailOrUsername: string;
-  password: string;
-}
-
-export interface SignupRequest {
-  email: string;
-  password: string;
-  username: string;
-}
-
-export interface AuthResponse {
-  token: string;
-  user: {
-    id: string;
-    email: string;
-    username: string;
-    role: string;
-  };
-}
-
-class AuthService {
-  private getHeaders() {
-    const token = localStorage.getItem('auth_token');
-    return {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
-    };
-  }
-
-  async login(emailOrUsername: string, password: string): Promise<AuthResponse> {
-    try {
-      const response = await axios.post(
-        `${API_URL}/auth/login`,
-        { emailOrUsername, password },
-        { headers: this.getHeaders() }
-      );
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.status === 401) {
-        throw new Error('Invalid credentials. Please check your email/username and password.');
-      }
-      throw new Error(error.response?.data?.detail || 'Login failed. Please try again.');
+/**
+ * Get the redirect URL for OAuth callbacks.
+ * In Electron, we use the current window location origin.
+ */
+const getRedirectUrl = (): string => {
+    if (typeof window !== 'undefined' && window.location) {
+        // Use the current origin (works for both dev server and production)
+        return `${window.location.origin}/auth/callback`;
     }
-  }
+    // Fallback for SSR or test environments
+    return 'http://localhost:5173/auth/callback';
+};
 
-  async signup(email: string, password: string, username: string): Promise<AuthResponse> {
-    try {
-      const response = await axios.post(
-        `${API_URL}/auth/signup`,
-        { email, password, username },
-        { headers: this.getHeaders() }
-      );
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.status === 400) {
-        throw new Error('User already exists or invalid data provided.');
-      }
-      throw new Error(error.response?.data?.detail || 'Signup failed. Please try again.');
-    }
-  }
+export const authService = {
+    /**
+     * Sign in with Google OAuth
+     * Uses Supabase's built-in OAuth flow with PKCE for security
+     */
+    async signInWithGoogle() {
+        const redirectUrl = getRedirectUrl();
+        console.log('[AuthService] Starting Google OAuth with redirect:', redirectUrl);
 
-  async getCurrentUser(): Promise<any> {
-    try {
-      const response = await axios.get(`${API_URL}/auth/me`, {
-        headers: this.getHeaders(),
-      });
-      return response.data;
-    } catch (error) {
-      throw new Error('Failed to get current user');
-    }
-  }
+        const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: redirectUrl,
+                queryParams: {
+                    access_type: 'offline',
+                    prompt: 'consent',
+                },
+            },
+        });
 
-  /**
-   * Initiate Google OAuth via Supabase.
-   * This triggers a full-page redirect to Google and then back to `/auth/callback`.
-   * Do NOT expect a session here; finalize in the callback route.
-   */
-  async signInWithGoogle(): Promise<void> {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: getAuthRedirectUrl(),
-      },
-    });
-    if (error) {
-      throw new Error(error.message || 'Google sign-in failed.');
-    }
-    // On success, the browser will navigate to Google; no further action here.
-  }
+        if (error) {
+            console.error('[AuthService] Google OAuth error:', error);
+            throw error;
+        }
 
-  async logout(): Promise<void> {
-    try {
-      await axios.post(
-        `${API_URL}/auth/logout`,
-        {},
-        { headers: this.getHeaders() }
-      );
-      // Also clear Supabase session if present
-      await supabase.auth.signOut();
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
-  }
+        console.log('[AuthService] OAuth initiated, redirecting to Google...');
+        return data;
+    },
 
-  async verifyToken(): Promise<boolean> {
-    try {
-      const response = await axios.get(`${API_URL}/auth/verify`, {
-        headers: this.getHeaders(),
-      });
-      return response.data.valid;
-    } catch (error) {
-      return false;
-    }
-  }
-}
+    /**
+     * Sign in with email and password
+     * Uses custom backend API for email/password authentication
+     */
+    async login(emailOrUsername: string, password: string) {
+        console.log('[AuthService] Attempting login for:', emailOrUsername);
 
-export const authService = new AuthService();
+        try {
+            // Use custom backend API endpoint for email/password login
+            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    emailOrUsername,
+                    password,
+                }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Login failed');
+            }
+
+            const data = await response.json();
+            console.log('[AuthService] Login successful for:', data.user?.email);
+            
+            return {
+                user: data.user,
+                token: data.token,
+            };
+        } catch (error: any) {
+            console.error('[AuthService] Login error:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Sign up with email, password, and optional username
+     * Uses custom backend API for email/password signup
+     */
+    async signup(email: string, password: string, username?: string) {
+        console.log('[AuthService] Attempting signup for:', email);
+
+        try {
+            // Use custom backend API endpoint for email/password signup
+            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/signup`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email,
+                    password,
+                    username: username || email.split('@')[0],
+                }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Signup failed');
+            }
+
+            const data = await response.json();
+            console.log('[AuthService] Signup successful for:', data.user?.email);
+            
+            return {
+                user: data.user,
+                token: data.token,
+            };
+        } catch (error: any) {
+            console.error('[AuthService] Signup error:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Get the current authenticated user
+     */
+    async getCurrentUser() {
+        const { data, error } = await supabase.auth.getUser();
+
+        if (error) {
+            console.error('[AuthService] Get user error:', error);
+            return null;
+        }
+
+        return data?.user || null;
+    },
+
+    /**
+     * Get the current session
+     */
+    async getSession() {
+        const { data, error } = await supabase.auth.getSession();
+
+        if (error) {
+            console.error('[AuthService] Get session error:', error);
+            return null;
+        }
+
+        return data?.session || null;
+    },
+
+    /**
+     * Sign out the current user
+     */
+    async logout() {
+        console.log('[AuthService] Signing out...');
+        const { error } = await supabase.auth.signOut();
+
+        if (error) {
+            console.error('[AuthService] Logout error:', error);
+            throw error;
+        }
+
+        console.log('[AuthService] Signed out successfully');
+    },
+
+    /**
+     * Refresh the current session
+     */
+    async refreshSession() {
+        const { data, error } = await supabase.auth.refreshSession();
+
+        if (error) {
+            console.error('[AuthService] Refresh session error:', error);
+            throw error;
+        }
+
+        return data?.session || null;
+    },
+};
+
+export default authService;

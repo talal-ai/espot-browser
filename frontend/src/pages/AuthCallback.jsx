@@ -1,61 +1,149 @@
+/**
+ * OAuth Callback Page
+ * Handles the redirect from Google OAuth after authentication.
+ * 
+ * This page:
+ * 1. Extracts the auth tokens from the URL (handled by Supabase automatically)
+ * 2. Establishes the session
+ * 3. Redirects to the appropriate dashboard based on user role
+ */
+
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
 const AuthCallback = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [error, setError] = useState('');
+    const navigate = useNavigate();
+    const [status, setStatus] = useState('Processing sign-in...');
+    const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const finalizeAuth = async () => {
-      try {
-        // Check for OAuth errors in URL first
-        const params = new URLSearchParams(location.search);
-        if (params.has('error')) {
-          const errorDesc = params.get('error_description')?.replace(/\+/g, ' ') || 'OAuth authentication failed';
-          setError(errorDesc);
-          // Redirect back to auth page after showing error
-          setTimeout(() => {
-            navigate('/auth', { replace: true });
-          }, 3000);
-          return;
-        }
+    useEffect(() => {
+        const handleAuthCallback = async () => {
+            try {
+                console.log('[AuthCallback] Processing OAuth callback...');
+                console.log('[AuthCallback] Current URL:', window.location.href);
 
-        const { data, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) throw sessionError;
-        if (data.session) {
-          // Persist token for API client and move to dashboard
-          localStorage.setItem('auth_token', data.session.access_token);
-          navigate('/', { replace: true });
-        } else {
-          setError('No active session. Please try signing in again.');
-          setTimeout(() => {
-            navigate('/auth', { replace: true });
-          }, 2000);
-        }
-      } catch (err) {
-        setError(err.message || 'Failed to complete authentication.');
-        setTimeout(() => {
-          navigate('/auth', { replace: true });
-        }, 3000);
-      }
-    };
+                // Check if there's an error in the URL (from OAuth provider)
+                const urlParams = new URLSearchParams(window.location.search);
+                const hashParams = new URLSearchParams(window.location.hash.substring(1));
 
-    finalizeAuth();
-  }, [navigate, location.search]);
+                const urlError = urlParams.get('error') || hashParams.get('error');
+                const errorDescription = urlParams.get('error_description') || hashParams.get('error_description');
 
-  return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
-        <p className="text-gray-600 dark:text-gray-400">Finishing sign-in…</p>
-        {error && (
-          <p className="text-red-600 mt-4">{error}</p>
-        )}
-      </div>
-    </div>
-  );
+                if (urlError) {
+                    console.error('[AuthCallback] OAuth error from provider:', urlError, errorDescription);
+                    setError(errorDescription || urlError);
+                    setTimeout(() => navigate('/auth', { replace: true }), 3000);
+                    return;
+                }
+
+                setStatus('Verifying authentication...');
+
+                // Supabase automatically handles extracting tokens from URL
+                // and establishing the session when detectSessionInUrl is true
+                const { data, error: sessionError } = await supabase.auth.getSession();
+
+                if (sessionError) {
+                    console.error('[AuthCallback] Session error:', sessionError);
+                    setError(sessionError.message);
+                    setTimeout(() => navigate('/auth', { replace: true }), 3000);
+                    return;
+                }
+
+                if (data.session) {
+                    const user = data.session.user;
+                    console.log('[AuthCallback] ✅ Session established for:', user.email);
+                    console.log('[AuthCallback] Provider:', user.app_metadata?.provider);
+                    console.log('[AuthCallback] User metadata:', user.user_metadata);
+
+                    setStatus('Welcome back! Redirecting to dashboard...');
+
+                    // Small delay for UX - let user see the success state
+                    await new Promise(resolve => setTimeout(resolve, 500));
+
+                    // Redirect to home - ProtectedRoute and RoleHome will handle role-based routing
+                    navigate('/', { replace: true });
+                } else {
+                    console.log('[AuthCallback] No session found, checking for tokens in URL...');
+
+                    // Try to exchange code for session (for PKCE flow)
+                    const code = urlParams.get('code');
+                    if (code) {
+                        console.log('[AuthCallback] Found auth code, exchanging for session...');
+                        const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+
+                        if (exchangeError) {
+                            console.error('[AuthCallback] Code exchange error:', exchangeError);
+                            setError(exchangeError.message);
+                            setTimeout(() => navigate('/auth', { replace: true }), 3000);
+                            return;
+                        }
+
+                        if (exchangeData.session) {
+                            console.log('[AuthCallback] ✅ Session established via code exchange');
+                            setStatus('Welcome! Redirecting to dashboard...');
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                            navigate('/', { replace: true });
+                            return;
+                        }
+                    }
+
+                    // No session and no code - redirect to auth
+                    console.log('[AuthCallback] No valid session or code, redirecting to login');
+                    navigate('/auth', { replace: true });
+                }
+            } catch (err) {
+                console.error('[AuthCallback] Unexpected error:', err);
+                setError(err instanceof Error ? err.message : 'An unexpected error occurred');
+                setTimeout(() => navigate('/auth', { replace: true }), 3000);
+            }
+        };
+
+        handleAuthCallback();
+    }, [navigate]);
+
+    // Error state
+    if (error) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 via-blue-50 to-blue-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+                <div className="text-center p-8 max-w-md">
+                    <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </div>
+                    <h2 className="text-xl font-semibold text-red-600 dark:text-red-400 mb-2">
+                        Authentication Failed
+                    </h2>
+                    <p className="text-gray-600 dark:text-gray-400 mb-4">{error}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-500">
+                        Redirecting to login page...
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
+    // Loading state
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 via-blue-50 to-blue-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+            <div className="text-center">
+                {/* Animated loader */}
+                <div className="relative w-16 h-16 mx-auto mb-6">
+                    <div className="absolute inset-0 border-4 border-orange-200 dark:border-orange-900 rounded-full"></div>
+                    <div className="absolute inset-0 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+
+                {/* Status text */}
+                <p className="text-gray-700 dark:text-gray-300 font-medium text-lg mb-2">
+                    {status}
+                </p>
+                <p className="text-gray-500 dark:text-gray-500 text-sm">
+                    Please wait...
+                </p>
+            </div>
+        </div>
+    );
 };
 
 export default AuthCallback;

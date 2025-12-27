@@ -10,15 +10,26 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    auth_user_id UUID UNIQUE, -- Links to Supabase auth.users for OAuth
     username VARCHAR(50) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255), -- Nullable for OAuth users (Google, GitHub, etc.)
+    provider VARCHAR(50) DEFAULT 'email' CHECK (provider IN ('email', 'google', 'github', 'discord', 'microsoft')),
     role VARCHAR(20) NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user', 'viewer')),
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'suspended')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    last_login TIMESTAMP WITH TIME ZONE
+    last_login TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT check_oauth_user_consistency CHECK (
+        (provider != 'email' AND auth_user_id IS NOT NULL) OR (provider = 'email')
+    ),
+    CONSTRAINT check_email_user_has_password CHECK (
+        (provider = 'email' AND (password_hash IS NOT NULL OR auth_user_id IS NOT NULL)) OR (provider != 'email')
+    )
 );
+
+-- Index for faster OAuth user lookups
+CREATE INDEX IF NOT EXISTS idx_users_auth_user_id ON users(auth_user_id);
 
 -- =============================================================================
 -- PROXIES TABLE

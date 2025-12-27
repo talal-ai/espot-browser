@@ -4,7 +4,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 const api = {
   // Generic IPC invoke (for flexibility)
   invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args),
-  
+
   // App info
   getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
   getAppPath: (name: string) => ipcRenderer.invoke('app:getPath', name),
@@ -17,17 +17,17 @@ const api = {
     openUrl: (url: string) => ipcRenderer.invoke('window:openUrl', url),
     createForUser: (userId: string, url?: string) => ipcRenderer.invoke('window:createForUser', userId, url),
   },
-  
+
   // Fingerprint profile API
   fingerprint: {
     setActive: (profile: any, userId: string) => ipcRenderer.invoke('fingerprint:setActive', profile, userId),
     getActive: () => ipcRenderer.invoke('fingerprint:getActive'),
   },
-  
-  // Browser launch with fingerprint spoofing
+
+  // Browser launch with fingerprint spoofing + Google cookie injection
   browser: {
-    launch: (url: string, profileId?: string, userId?: string) => 
-      ipcRenderer.invoke('browser:launch', url, profileId, userId),
+    launch: (url: string, profileId?: string, userId?: string, authToken?: string) =>
+      ipcRenderer.invoke('browser:launch', url, profileId, userId, authToken),
   },
 
   // Admin API

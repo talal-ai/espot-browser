@@ -399,12 +399,16 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
   // ============================================================================
   Object.defineProperty(navigator, 'plugins', {
     get: () => {
-      return {
-        length: 3,
-        0: { name: 'PDF Viewer', filename: 'internal-pdf-viewer' },
-        1: { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
-        2: { name: 'Chromium PDF Plugin', filename: 'internal-pdf-viewer' }
-      };
+      const plugins = [
+        { name: 'PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+        { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+        { name: 'Chromium PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+        { name: 'Microsoft Edge PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+        { name: 'WebKit built-in PDF', filename: 'internal-pdf-viewer', description: 'Portable Document Format' }
+      ];
+      const p = [...plugins];
+      Object.defineProperty(p, 'refresh', { value: () => {} });
+      return p;
     },
     configurable: false
   });
@@ -413,6 +417,53 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
     get: () => ({ length: 0 }),
     configurable: false
   });
+
+  // ============================================================================
+  // 13. SPOOF WINDOW.CHROME (CRITICAL FOR GOOGLE)
+  // ============================================================================
+  window.chrome = {
+    app: {
+      isInstalled: false,
+      InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+      RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' }
+    },
+    runtime: {
+      OnInstalledReason: { INSTALL: 'install', UPDATE: 'update', CHROME_UPDATE: 'chrome_update', SHARED_MODULE_UPDATE: 'shared_module_update' },
+      OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
+      PlatformArch: { ARM: 'arm', ARM64: 'arm64', X86_32: 'x86-32', X86_64: 'x86-64' },
+      PlatformNaclArch: { ARM: 'arm', X86_32: 'x86-32', X86_64: 'x86-64' },
+      PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' },
+      RequestUpdateCheckStatus: { THROTTLED: 'throttled', NO_UPDATE: 'no_update', UPDATE_AVAILABLE: 'update_available' }
+    },
+    csi: () => ({ startE: Date.now(), onloadT: Date.now() + 100, pageT: 50, tran: 15 }),
+    loadTimes: () => ({
+      requestTime: Date.now() / 1000,
+      startLoadTime: Date.now() / 1000,
+      commitLoadTime: (Date.now() + 50) / 1000,
+      finishDocumentLoadTime: (Date.now() + 100) / 1000,
+      finishLoadTime: (Date.now() + 200) / 1000,
+      firstPaintTime: (Date.now() + 80) / 1000,
+      firstPaintAfterLoadTime: 0,
+      navigationType: 'Other',
+      wasFetchedFromCache: false,
+      wasAlternateProtocolAvailable: false,
+      wasInPrefetchHL: false
+    })
+  };
+
+  // ============================================================================
+  // 14. INTL SPOOFING (V8 Features)
+  // ============================================================================
+  if (!Intl.v8BreakIterator) {
+    Intl.v8BreakIterator = function() {
+      return {
+        adoptText: () => {},
+        first: () => 0,
+        next: () => 0,
+        current: () => 0
+      };
+    };
+  }
   
   console.log('[ESPOT] ✅ Fingerprint spoofing applied successfully');
   console.log('[ESPOT] Profile ID: ${profile.id}');
@@ -533,7 +584,8 @@ export async function createSpoofedWindow(
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true,
+      // DISABLED: sandbox can interfere with Google login
+      // sandbox: true,
       preload: tempPreloadPath, // THIS IS KEY - runs before any page code
       ...options.webPreferences
     }
@@ -545,14 +597,14 @@ export async function createSpoofedWindow(
   // Apply additional spoofing layers
   const ses = window.webContents.session;
 
-  // Block WebRTC
-  ses.setPermissionRequestHandler((webContents, permission, callback) => {
-    if (permission === 'media' || permission === 'mediaKeySystem') {
-      callback(false);
-    } else {
-      callback(true);
-    }
-  });
+  // DISABLED: Permission blocking can interfere with Google login
+  // ses.setPermissionRequestHandler((webContents, permission, callback) => {
+  //   if (permission === 'media' || permission === 'mediaKeySystem') {
+  //     callback(false);
+  //   } else {
+  //     callback(true);
+  //   }
+  // });
 
   // Note: Primary injection is via preload script (runs before any page code)
   // The backup webRequest injection has been removed as preload is reliable

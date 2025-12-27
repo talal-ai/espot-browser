@@ -19,9 +19,9 @@ const Auth = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { login, signup, signInWithGoogle } = useAuth();
-  
+
   // Check if real Supabase config is available
-  const hasSupabaseConfig = import.meta.env.VITE_SUPABASE_URL && 
+  const hasSupabaseConfig = import.meta.env.VITE_SUPABASE_URL &&
     import.meta.env.VITE_SUPABASE_URL !== 'https://placeholder.supabase.co';
 
   // Clear OAuth errors from URL on mount and clean up stale OAuth state
@@ -33,7 +33,7 @@ const Auth = () => {
       // Clear the error from URL
       navigate('/auth', { replace: true });
     }
-    
+
     // Clean up any stale OAuth state from localStorage/sessionStorage
     // This prevents redirect loops from failed OAuth attempts
     try {
@@ -153,7 +153,7 @@ const Auth = () => {
     setIsDark(next);
     const root = document.documentElement;
     if (next) root.classList.add('dark'); else root.classList.remove('dark');
-    try { localStorage.setItem('theme', next ? 'dark' : 'light'); } catch {}
+    try { localStorage.setItem('theme', next ? 'dark' : 'light'); } catch { }
   };
 
   return (
@@ -183,7 +183,7 @@ const Auth = () => {
         </button>
         <Card className="shadow-2xl bg-white/20 dark:bg-gray-900/20 backdrop-blur-xl border border-white/20 dark:border-white/10 ring-1 ring-white/10 shadow-black/10 dark:shadow-black/30">
           <CardHeader className="space-y-1 pb-6">
-              <div className="flex justify-center mb-4">
+            <div className="flex justify-center mb-4">
               <motion.div
                 whileHover={{ scale: 1.05, rotate: 5 }}
                 whileTap={{ scale: 0.95 }}
@@ -192,7 +192,7 @@ const Auth = () => {
                 {/* Use unified brand logo instead of a generic browser icon */}
                 <Logo size={48} alt="ESPOT Browser Logo" />
               </motion.div>
-              </div>
+            </div>
             <CardTitle className="text-3xl font-bold text-center bg-gradient-to-r from-orange-500 to-blue-600 bg-clip-text text-transparent font-brandHeading tracking-tight">
               {isLogin ? "Welcome Back" : "Create Account"}
             </CardTitle>
@@ -438,7 +438,7 @@ const Auth = () => {
         </motion.p>
       </motion.div>
 
-      
+
     </div>
   );
 };

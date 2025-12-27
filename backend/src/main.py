@@ -28,6 +28,7 @@ from src.routes.browser_instances_routes import router as browser_instances_rout
 from src.routes.device_profiles_routes import router as device_profiles_router
 from src.routes.detection_routes import router as detection_router
 from src.routes.user_routes import router as user_router
+# from src.routes.google_routes import router as google_router
 
 
 from src.config.supabase import test_supabase_connection
@@ -87,6 +88,7 @@ app.include_router(logs_router)
 app.include_router(browser_instances_router)
 app.include_router(device_profiles_router)
 app.include_router(detection_router)
+# app.include_router(google_router)  # Google OAuth token management
 
 
 try:

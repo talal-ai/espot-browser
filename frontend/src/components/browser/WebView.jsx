@@ -1,12 +1,17 @@
 import React, { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 
 /**
+ * WebView Component - Renders isolated browser tab
+ * Uses Electron session partitions to share cookies across tabs for same user
+ */
+
+/**
  * Generate autofill script for injection into webview
  */
 function generateAutofillScript(username, password, url) {
     const escapedUsername = username.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
     const escapedPassword = password.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
-    
+
     return `
 (function() {
     'use strict';
@@ -168,8 +173,71 @@ function generateAutofillScript(username, password, url) {
 `;
 }
 
-const WebView = forwardRef(({ url, isActive, partition, userAgent, credentials, onTitleChange, onUrlChange, onLoadingChange, onFaviconChange }, ref) => {
+const WebView = forwardRef(({ url, isActive, partition, userId, userAgent, credentials, onTitleChange, onUrlChange, onLoadingChange, onFaviconChange }, ref) => {
     const webviewRef = useRef(null);
+    const [cookiesInjected, setCookiesInjected] = React.useState(false);
+
+    // Use a SHARED session partition for all tabs of the same user
+    // If partition passed as null, use DEFAULT session (shared with main window)
+    const sessionPartition = partition === null ? undefined : (partition || (userId ? `persist:user-${userId}` : 'persist:main'));
+
+
+
+    // Inject Google cookies when component mounts (if userId provided AND using isolated partition)
+    useEffect(() => {
+        // If using default session (sessionPartition is undefined), we already have cookies from main window!
+        if (!userId || cookiesInjected || sessionPartition === undefined) return;
+
+        const injectCookies = async () => {
+            try {
+                // Get auth token from localStorage
+                const authToken = localStorage.getItem('auth_token');
+                if (!authToken) {
+                    console.warn('[WebView] No auth token found, skipping cookie injection');
+                    return;
+                }
+
+                console.log('[WebView] 🍪 Injecting Google cookies for user:', userId);
+
+                // Call Electron IPC to inject cookies
+                if (window.electron?.browser?.launch) {
+                    // Use browser.launch which handles cookie injection
+                    console.log('[WebView] Cookie injection via browser.launch not needed for webview');
+                } else if (window.electronAPI?.invoke) {
+                    // Direct IPC call
+                    const result = await window.electronAPI.invoke('google:injectCookies', userId, sessionPartition);
+                    if (result.success) {
+                        console.log('[WebView] ✅ Cookies injected successfully');
+                        setCookiesInjected(true);
+                    } else {
+                        console.warn('[WebView] ⚠️ Cookie injection failed:', result.error);
+                    }
+                }
+            } catch (error) {
+                console.error('[WebView] Error injecting cookies:', error);
+            }
+        };
+
+        injectCookies();
+    }, [userId, sessionPartition, cookiesInjected]);
+
+    // Use a ref to track the current expected URL to avoid cycles
+    const currentUrlRef = useRef(url);
+
+    // Update ref when url prop changes (e.g. from address bar input)
+    useEffect(() => {
+        if (url !== currentUrlRef.current) {
+            currentUrlRef.current = url;
+            // Only imperatively load if the webview isn't already there
+            // This prevents re-loading the page when the update came from the page itself
+            if (webviewRef.current && webviewRef.current.getURL() !== url) {
+                // Ignore empty or about:blank unless explicitly requested
+                if (url && url !== 'about:blank') {
+                    webviewRef.current.loadURL(url);
+                }
+            }
+        }
+    }, [url]);
 
     useImperativeHandle(ref, () => ({
         reload: () => {
@@ -209,17 +277,142 @@ const WebView = forwardRef(({ url, isActive, partition, userAgent, credentials, 
 
         const handlePageTitleUpdated = (e) => onTitleChange(e.title);
 
-        const handleDidNavigate = (e) => onUrlChange(e.url);
-        const handleDidNavigateInPage = (e) => onUrlChange(e.url);
+        // Helper to check if URL is a main frame navigation or noise
+        const isValidNavigation = (navUrl) => {
+            if (!navUrl) return false;
+            // Ignore Google hovercards, widgets, and internal frames
+            if (navUrl.includes('contacts.google.com/widget')) return false;
+            if (navUrl.includes('plus.google.com/u/0/_/hovercard')) return false;
+            if (navUrl.includes('accounts.google.com/SignOutOptions')) return false;
+            return true;
+        };
+
+        const handleDidNavigate = (e) => {
+            if (isValidNavigation(e.url)) {
+                // Update our ref so we don't trigger a re-load loop
+                currentUrlRef.current = e.url;
+                onUrlChange(e.url);
+            } else {
+                console.log('[WebView] Ignoring navigation to:', e.url);
+            }
+        };
+
+        const handleDidNavigateInPage = (e) => {
+            if (isValidNavigation(e.url)) {
+                currentUrlRef.current = e.url;
+                onUrlChange(e.url);
+            }
+        };
+
+        // Handle new windows (popups) - e.g. preventing them or opening in new tab
+        const handleNewWindow = (e) => {
+            console.log('[WebView] New window requested:', e.url);
+            // Verify if it's a valid navigation or a popup we want to block/handle
+            if (e.url.includes('contacts.google.com/widget')) {
+                e.preventDefault(); // Block widget popups if they try to open separately
+                return;
+            }
+            // For now, let Electron default handle it (usually new window) or we could implement open in new tab
+            // e.preventDefault();
+            // window.electronAPI.window.createForUser(userId, e.url);
+        };
 
         const handleDomReady = () => {
-            // Anti-detection: Delete navigator.webdriver in the webview
-            webview.executeJavaScript(`
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined,
-                });
-             `).catch(() => { });
-            
+            // Check if navigating to Google
+            const currentUrl = webview.getURL ? webview.getURL() : url;
+            const isGoogleUrl = currentUrl.includes('google.com') ||
+                currentUrl.includes('googleapis.com') ||
+                currentUrl.includes('gstatic.com');
+
+            // Full stealth script for Google pages
+            const stealthScript = `
+(function() {
+    'use strict';
+    
+    // Delete Electron/Node.js globals
+    ['require', 'exports', 'module', 'process', '__dirname', '__filename', 'Buffer', 'global'].forEach(prop => {
+        try { if (window[prop] !== undefined) delete window[prop]; } catch(e) {}
+    });
+    
+    // Remove webdriver flag
+    try {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined, configurable: true });
+    } catch(e) {}
+    
+    // Add Chrome object (Google checks this!)
+    if (!window.chrome) window.chrome = {};
+    if (!window.chrome.runtime) {
+        window.chrome.runtime = {
+            id: undefined,
+            connect: function() { return { onMessage: { addListener: function() {} }, postMessage: function() {} }; },
+            sendMessage: function() {},
+            onConnect: { addListener: function() {} },
+            onMessage: { addListener: function() {} },
+            getManifest: function() { return {}; },
+            getURL: function(path) { return ''; }
+        };
+    }
+    if (!window.chrome.loadTimes) {
+        window.chrome.loadTimes = function() {
+            return {
+                commitLoadTime: Date.now() / 1000,
+                connectionInfo: 'h2',
+                finishDocumentLoadTime: Date.now() / 1000,
+                finishLoadTime: Date.now() / 1000,
+                firstPaintTime: Date.now() / 1000,
+                navigationType: 'Other',
+                requestTime: Date.now() / 1000 - 0.1,
+                startLoadTime: Date.now() / 1000 - 0.1
+            };
+        };
+    }
+    if (!window.chrome.csi) {
+        window.chrome.csi = function() {
+            return { onloadT: Date.now(), pageT: Date.now() - performance.timing.navigationStart, startE: performance.timing.navigationStart, tran: 15 };
+        };
+    }
+    if (!window.chrome.app) {
+        window.chrome.app = { isInstalled: false, getDetails: function() { return null; }, getIsInstalled: function() { return false; } };
+    }
+    
+    // Navigator overrides
+    try { Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'], configurable: true }); } catch(e) {}
+    try { Object.defineProperty(navigator, 'platform', { get: () => 'Win32', configurable: true }); } catch(e) {}
+    try { Object.defineProperty(navigator, 'vendor', { get: () => 'Google Inc.', configurable: true }); } catch(e) {}
+    try { Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8, configurable: true }); } catch(e) {}
+    try { Object.defineProperty(navigator, 'deviceMemory', { get: () => 8, configurable: true }); } catch(e) {}
+    try { Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 0, configurable: true }); } catch(e) {}
+    
+    // Plugins (Chrome has these)
+    try {
+        Object.defineProperty(navigator, 'plugins', {
+            get: () => {
+                const p = [
+                    { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                    { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+                    { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' }
+                ];
+                p.length = 3;
+                return p;
+            },
+            configurable: true
+        });
+    } catch(e) {}
+    
+    console.log('[WebView Stealth] Applied');
+})();
+`;
+
+            // Always apply stealth for Google URLs, basic for others
+            if (isGoogleUrl) {
+                webview.executeJavaScript(stealthScript).catch(() => { });
+            } else {
+                // Basic anti-detection for non-Google
+                webview.executeJavaScript(`
+                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                `).catch(() => { });
+            }
+
             // Inject autofill if credentials provided
             if (credentials && credentials.username && credentials.password) {
                 const autofillScript = generateAutofillScript(credentials.username, credentials.password, url);
@@ -237,26 +430,35 @@ const WebView = forwardRef(({ url, isActive, partition, userAgent, credentials, 
         webview.addEventListener('did-navigate', handleDidNavigate);
         webview.addEventListener('did-navigate-in-page', handleDidNavigateInPage);
         webview.addEventListener('dom-ready', handleDomReady);
+        webview.addEventListener('new-window', handleNewWindow);
 
         return () => {
-            if (webview) {
-                webview.removeEventListener('did-start-loading', handleDidStartLoading);
-                webview.removeEventListener('did-stop-loading', handleDidStopLoading);
-                webview.removeEventListener('did-finish-load', handleDidFinishLoad);
-                webview.removeEventListener('page-title-updated', handlePageTitleUpdated);
-                webview.removeEventListener('did-navigate', handleDidNavigate);
-                webview.removeEventListener('did-navigate-in-page', handleDidNavigateInPage);
-                webview.removeEventListener('dom-ready', handleDomReady);
+            // Using a ref-safe cleanup
+            const cleanupWebview = webviewRef.current;
+            if (cleanupWebview) {
+                cleanupWebview.removeEventListener('did-start-loading', handleDidStartLoading);
+                cleanupWebview.removeEventListener('did-stop-loading', handleDidStopLoading);
+                cleanupWebview.removeEventListener('did-finish-load', handleDidFinishLoad);
+                cleanupWebview.removeEventListener('page-title-updated', handlePageTitleUpdated);
+                cleanupWebview.removeEventListener('did-navigate', handleDidNavigate);
+                cleanupWebview.removeEventListener('did-navigate-in-page', handleDidNavigateInPage);
+                cleanupWebview.removeEventListener('dom-ready', handleDomReady);
+                cleanupWebview.removeEventListener('new-window', handleNewWindow);
             }
         };
-    }, []);
+    }, [userId, sessionPartition]); // Removed 'url' from dependency to prevent re-binding loops
+
+    // Log partition usage only on mount or change
+    useEffect(() => {
+        console.log('[WebView] Active partition:', sessionPartition || 'DEFAULT (Shared)');
+    }, [sessionPartition]);
 
     return (
         <div className={`w-full h-full flex flex-col ${isActive ? 'visible' : 'hidden'}`}>
             <webview
                 ref={webviewRef}
-                src={url}
-                partition={partition || 'persist:main'}
+                src={url} // Initial src
+                partition={sessionPartition}
                 useragent={userAgent}
                 style={{ width: '100%', height: '100%', display: 'flex' }}
                 allowpopups="true"
@@ -266,4 +468,17 @@ const WebView = forwardRef(({ url, isActive, partition, userAgent, credentials, 
     );
 });
 
-export default WebView;
+// Custom comparison to avoid re-renders due to new function references in parent
+const arePropsEqual = (prevProps, nextProps) => {
+    return (
+        prevProps.url === nextProps.url &&
+        prevProps.isActive === nextProps.isActive &&
+        prevProps.partition === nextProps.partition &&
+        prevProps.userId === nextProps.userId &&
+        prevProps.userAgent === nextProps.userAgent &&
+        // Deep compare credentials if necessary, or just shallow
+        prevProps.credentials === nextProps.credentials
+    );
+};
+
+export default React.memo(WebView, arePropsEqual);

@@ -32,12 +32,13 @@ export const BrowserProvider = ({ children }) => {
    * @param {string} options.url - URL to load
    * @param {string} [options.title] - Tab title
    * @param {string} [options.serviceId] - Service ID for isolated session
+   * @param {string} [options.userId] - User ID for session sharing (all tabs for same user share cookies)
    * @param {Object} [options.credentials] - Autofill credentials {username, password}
    * @param {string} [options.userAgent] - Custom user agent
    */
   const openTab = useCallback((options) => {
-    const { url, title, serviceId, credentials, userAgent } = options;
-    
+    const { url, title, serviceId, userId, credentials, userAgent } = options;
+
     const newTabId = serviceId || crypto.randomUUID();
     const newTab = {
       id: newTabId,
@@ -48,14 +49,15 @@ export const BrowserProvider = ({ children }) => {
       canGoBack: false,
       canGoForward: false,
       loading: true,
-      userAgent: userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      userAgent: userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
       credentials, // Store for injection
       serviceId,
+      userId, // Store userId for session partitioning
     };
 
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newTabId);
-    
+
     return newTabId;
   }, []);
 

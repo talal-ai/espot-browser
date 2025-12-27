@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { Send, X, MessageCircle, HelpCircle, Check, CheckCheck } from 'lucide-react'
+import { Send, X, MessageCircle, HelpCircle, Check, CheckCheck, Image, Loader2 } from 'lucide-react'
 import { Button } from '../../../components/ui/button'
 import apiService from '../../../services/api.service'
 import { chatSocket } from '../services/ChatSocket'
-import { generateKey, encrypt, decrypt, toBase64 } from '../crypto/crypto'
+import { generateKey, encrypt, decrypt, toBase64, encryptBinary, decryptBinary, arrayBufferToBase64, fromBase64 } from '../crypto/crypto'
 import { useAuth } from '../../../contexts/AuthContext'
+import { supabase } from '../../../lib/supabase'
 
 // Notification sound (base64 encoded short beep)
 const NOTIFICATION_SOUND = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2Onp+al4yCc2ZfY26Ck6GorKifkoV3amJibHyCk6Gor6yjlol8bmVjZ3J/jZqnrK2nl4p9cGdmanuHlqGpr6qjl4p8cGhlanuGlaGorqqkmIp9cWlpb3uHlaGnrKmjl4t+c25ucXyHlJ+lqqijl4t+dHFxdH2IlJ6kp6WglYl8dnR0eH+JlJ2jpaSflYl9d3Z3e4CKlJyjpKOfk4h8eHh6fYKLlJuhoqGdkoZ7eXl7f4OMk5qfoaCckYV6enp8gIWNk5men5+aj4N5e3t+goeOk5ebnpyYjIF5fH1/hIiOk5eampqVi398fX6Bg4qQlZeYl5SSiH5+f4GEh4yRlZaWlJCNhX9/gIKFiIyQk5SUko+LhICBgoSGiYyPkZGQjo2Ig4GCg4WGiYuNj4+OjIqGgoKDhIWHiYqMjY2Mi4mFgoKDhIWGiImKi4uKiYiEgoKDhISFhoiJiYmJiIaEgoKDhISFhoaHiIiIh4aEgoKCg4SEhYaGh4eHhoWEgoKCg4OEhYWGhoeHhoWEg4KCg4OEhIWFhoaGhoWEg4KCgoODhISFhYWFhYWEg4KCgoODhISEhYWFhYSEg4KCgoKDg4SEhISEhISEg4KCgoKDg4ODhISEhISDg4KCgoKCg4ODg4SEhISDg4KCgoKCg4ODg4ODg4ODg4KCgoKCgoODg4ODg4ODgoKCgoKCgoKDg4ODg4ODgoKCgoKCgoKDg4ODg4OCgoKCgoKCgoKDg4ODg4OCgoKCgoKCgoKCg4ODg4OCgoKCgoKCgoKCg4ODgoKCgoKCgoKCgoKCg4ODgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoI='
@@ -25,6 +26,9 @@ export default function ChatWindow({ open, onClose, conversationId: initialConve
   const [conversationId, setConversationId] = useState(initialConversationId || null)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
+  const [selectedImage, setSelectedImage] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null)
+  const [uploading, setUploading] = useState(false)
   const keyRef = useRef(null)
   const startedRef = useRef(false)
   const convRef = useRef(null)
@@ -175,8 +179,46 @@ export default function ChatWindow({ open, onClose, conversationId: initialConve
     }
   }, [open, initialConversationId, user?.id, onNewMessage])
 
-  const send = () => {
-    if (!conversationId || !input.trim()) return
+  const send = async () => {
+    if (!conversationId) return
+    if (!input.trim() && !selectedImage) return
+
+    // Handle image upload
+    if (selectedImage) {
+      const imageData = await uploadImage()
+      if (!imageData) return
+
+      const tempId = `temp-${Date.now()}`
+      chatSocket.sendMessage(
+        conversationId,
+        imageData.ciphertext,
+        imageData.nonce,
+        'image',
+        tempId,
+        imageData.attachmentUrl,
+        imageData.attachmentType,
+        imageData.fileSize
+      )
+
+      const optimistic = {
+        id: tempId,
+        ciphertext: imageData.ciphertext,
+        nonce: imageData.nonce,
+        content_type: 'image',
+        attachment_url: imageData.attachmentUrl,
+        attachment_type: imageData.attachmentType,
+        file_size: imageData.fileSize,
+        created_at: new Date().toISOString(),
+        sender_id: user?.id
+      }
+      setMessages((m) => [...m, optimistic])
+      pendingRef.current[tempId] = true
+      clearImage()
+      setTimeout(scrollToBottom, 50)
+      return
+    }
+
+    // Handle text message
     const tempId = `temp-${Date.now()}`
     if (keyRef.current) {
       const { ciphertext, nonce } = encrypt(keyRef.current, input.trim())
@@ -199,6 +241,97 @@ export default function ChatWindow({ open, onClose, conversationId: initialConve
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       send()
+    }
+  }
+
+  const handleImageSelect = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+    if (!validTypes.includes(file.type)) {
+      alert('Please select a valid image file (JPEG, PNG, GIF, or WebP)')
+      return
+    }
+
+    // Validate file size (5MB max)
+    const maxSize = 5 * 1024 * 1024 // 5MB
+    if (file.size > maxSize) {
+      alert('Image size must be less than 5MB')
+      return
+    }
+
+    setSelectedImage(file)
+    
+    // Create preview
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      setImagePreview(e.target.result)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const clearImage = () => {
+    setSelectedImage(null)
+    setImagePreview(null)
+  }
+
+  const uploadImage = async () => {
+    if (!selectedImage || !conversationId) return null
+
+    try {
+      setUploading(true)
+      
+      // Read file as ArrayBuffer
+      const arrayBuffer = await selectedImage.arrayBuffer()
+      const uint8Array = new Uint8Array(arrayBuffer)
+
+      // Encrypt the image data
+      let encryptedData, ciphertext, nonce
+      if (keyRef.current) {
+        const encrypted = encryptBinary(keyRef.current, uint8Array)
+        ciphertext = encrypted.ciphertext
+        nonce = encrypted.nonce
+        // Decode the base64 ciphertext back to binary for upload
+        encryptedData = fromBase64(ciphertext)
+      } else {
+        // Fallback: upload unencrypted (not recommended but for compatibility)
+        encryptedData = uint8Array
+        ciphertext = arrayBufferToBase64(arrayBuffer)
+        nonce = 'plain'
+      }
+
+      // Generate message ID for storage path
+      const messageId = `temp-${Date.now()}`
+      const fileName = selectedImage.name
+      const filePath = `${conversationId}/${messageId}-${fileName}`
+
+      // Upload encrypted data to Supabase Storage
+      // Use original MIME type so bucket accepts it
+      const { data, error } = await supabase.storage
+        .from('chat-attachments')
+        .upload(filePath, new Blob([encryptedData], { type: selectedImage.type }), {
+          contentType: selectedImage.type,
+          upsert: false
+        })
+
+      if (error) throw error
+
+      // Return attachment metadata
+      return {
+        attachmentUrl: filePath,
+        attachmentType: selectedImage.type,
+        fileSize: selectedImage.size,
+        ciphertext,
+        nonce
+      }
+    } catch (error) {
+      console.error('Image upload failed:', error)
+      alert('Failed to upload image. Please try again.')
+      return null
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -250,7 +383,46 @@ export default function ChatWindow({ open, onClose, conversationId: initialConve
 
         {/* Input Area */}
         <div className="p-3 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800">
+          {/* Image Preview */}
+          {imagePreview && (
+            <div className="mb-3 relative inline-block">
+              <img 
+                src={imagePreview} 
+                alt="Preview" 
+                className="max-h-32 rounded-lg border-2 border-blue-500"
+              />
+              <button
+                onClick={clearImage}
+                className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 shadow-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+          
           <div className="flex gap-2 items-end bg-gray-50 dark:bg-gray-800/50 p-2 rounded-xl border border-gray-200 dark:border-gray-700 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/50 transition-all">
+            {/* Image Upload Button */}
+            <input
+              type="file"
+              id="image-upload"
+              accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+              onChange={handleImageSelect}
+              className="hidden"
+            />
+            <label htmlFor="image-upload">
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-9 w-9 shrink-0 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                asChild
+              >
+                <span className="cursor-pointer flex items-center justify-center">
+                  <Image className="w-4 h-4" />
+                </span>
+              </Button>
+            </label>
+            
             <textarea
               className="flex-1 bg-transparent border-none focus:ring-0 resize-none text-sm max-h-24 py-2 px-2 text-gray-900 dark:text-gray-100 placeholder:text-gray-400"
               value={input}
@@ -258,14 +430,19 @@ export default function ChatWindow({ open, onClose, conversationId: initialConve
               onKeyDown={handleKeyDown}
               placeholder="Type your message..."
               rows={1}
+              disabled={uploading}
             />
             <Button
               size="icon"
               onClick={send}
-              disabled={!input.trim()}
-              className="h-9 w-9 shrink-0 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition-all"
+              disabled={(!input.trim() && !selectedImage) || uploading}
+              className="h-9 w-9 shrink-0 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition-all disabled:opacity-50"
             >
-              <Send className="w-4 h-4" />
+              {uploading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
             </Button>
           </div>
           <div className="text-[10px] text-center text-gray-400 mt-2">
@@ -278,40 +455,153 @@ export default function ChatWindow({ open, onClose, conversationId: initialConve
 }
 
 function MessageItem({ msg, keyB64, meId }) {
-  let text = ''
-  if (keyB64) {
-    text = decrypt(keyB64, msg.ciphertext, msg.nonce)
-  } else {
+  const [imageUrl, setImageUrl] = useState(null)
+  const [imageLoading, setImageLoading] = useState(false)
+  const [imageError, setImageError] = useState(false)
+  const [expandedImage, setExpandedImage] = useState(false)
+
+  // Load and decrypt image if message is an image type
+  useEffect(() => {
+    if (msg.content_type === 'image' && msg.attachment_url) {
+      loadImage()
+    }
+  }, [msg])
+
+  const loadImage = async () => {
     try {
-      text = atob(msg.ciphertext)
-    } catch {
-      text = ''
+      setImageLoading(true)
+      setImageError(false)
+
+      // Get signed URL from Supabase Storage
+      const { data, error } = await supabase.storage
+        .from('chat-attachments')
+        .download(msg.attachment_url)
+
+      if (error) throw error
+
+      // Read the blob as ArrayBuffer
+      const arrayBuffer = await data.arrayBuffer()
+      const uint8Array = new Uint8Array(arrayBuffer)
+
+      // Decrypt if we have a key
+      let decryptedData
+      if (keyB64 && msg.nonce !== 'plain') {
+        const decrypted = decryptBinary(keyB64, toBase64(uint8Array), msg.nonce)
+        decryptedData = decrypted
+      } else {
+        decryptedData = uint8Array
+      }
+
+      // Create blob URL for display
+      const blob = new Blob([decryptedData], { type: msg.attachment_type || 'image/jpeg' })
+      const url = URL.createObjectURL(blob)
+      setImageUrl(url)
+    } catch (error) {
+      console.error('Failed to load image:', error)
+      setImageError(true)
+    } finally {
+      setImageLoading(false)
     }
   }
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (imageUrl) {
+        URL.revokeObjectURL(imageUrl)
+      }
+    }
+  }, [imageUrl])
+
+  // Handle text messages
+  let text = ''
+  if (msg.content_type === 'text') {
+    if (keyB64) {
+      text = decrypt(keyB64, msg.ciphertext, msg.nonce)
+    } else {
+      try {
+        text = atob(msg.ciphertext)
+      } catch {
+        text = ''
+      }
+    }
+  }
+
   const ts = new Date(msg.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const mine = msg.sender_id && meId && msg.sender_id === meId
 
   return (
-    <div className={`flex w-full ${mine ? 'justify-end' : 'justify-start'}`}>
-      <div className={`flex flex-col max-w-[75%] ${mine ? 'items-end' : 'items-start'}`}>
-        <div
-          className={`px-4 py-2.5 shadow-sm text-sm break-words ${mine
-            ? 'bg-gradient-to-br from-blue-600 to-orange-600 text-white rounded-2xl rounded-tr-sm'
-            : 'bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded-2xl rounded-tl-sm'
-            }`}
-        >
-          <div className="flex items-end justify-between gap-2">
-            <span className="flex-1">{text}</span>
-            {mine && (
-              <MessageStatus status={msg.status || 'delivered'} className="flex-shrink-0 self-end" />
+    <>
+      <div className={`flex w-full ${mine ? 'justify-end' : 'justify-start'}`}>
+        <div className={`flex flex-col max-w-[75%] ${mine ? 'items-end' : 'items-start'}`}>
+          <div
+            className={`px-4 py-2.5 shadow-sm text-sm break-words ${mine
+              ? 'bg-gradient-to-br from-blue-600 to-orange-600 text-white rounded-2xl rounded-tr-sm'
+              : 'bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded-2xl rounded-tl-sm'
+              }`}
+          >
+            {msg.content_type === 'image' ? (
+              <div className="flex flex-col gap-2">
+                {imageLoading && (
+                  <div className="w-48 h-48 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-lg">
+                    <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                  </div>
+                )}
+                {imageError && (
+                  <div className="w-48 h-32 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-lg">
+                    <span className="text-gray-500 text-xs">Failed to load image</span>
+                  </div>
+                )}
+                {imageUrl && !imageError && (
+                  <img
+                    src={imageUrl}
+                    alt="Attachment"
+                    className="max-w-[300px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => setExpandedImage(true)}
+                  />
+                )}
+                <div className="flex items-center justify-between gap-2">
+                  {mine && (
+                    <MessageStatus status={msg.status || 'delivered'} className="flex-shrink-0" />
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-end justify-between gap-2">
+                <span className="flex-1">{text}</span>
+                {mine && (
+                  <MessageStatus status={msg.status || 'delivered'} className="flex-shrink-0 self-end" />
+                )}
+              </div>
             )}
           </div>
-        </div>
-        <div className="flex items-center gap-1.5 mt-1 px-1">
-          <span className="text-[10px] text-gray-400">{ts}</span>
+          <div className="flex items-center gap-1.5 mt-1 px-1">
+            <span className="text-[10px] text-gray-400">{ts}</span>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Image Expand Modal */}
+      {expandedImage && imageUrl && (
+        <div 
+          className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setExpandedImage(false)}
+        >
+          <button
+            className="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white"
+            onClick={() => setExpandedImage(false)}
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={imageUrl}
+            alt="Expanded"
+            className="max-w-full max-h-full object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </>
   )
 }
 

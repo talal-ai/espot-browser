@@ -25,8 +25,17 @@ class ChatSocket {
   joinConversation(conversationId: string) {
     this.socket?.emit('join_conversation', { conversationId })
   }
-  sendMessage(conversationId: string, ciphertext: string, nonce: string, contentType: string = 'text', tempId?: string) {
-    this.socket?.emit('message', { conversationId, ciphertext, nonce, contentType, tempId })
+  sendMessage(conversationId: string, ciphertext: string, nonce: string, contentType: string = 'text', tempId?: string, attachmentUrl?: string, attachmentType?: string, fileSize?: number) {
+    this.socket?.emit('message', { 
+      conversationId, 
+      ciphertext, 
+      nonce, 
+      contentType, 
+      tempId,
+      attachmentUrl,
+      attachmentType,
+      fileSize
+    })
   }
   readReceipt(conversationId: string, messageId: string) {
     this.socket?.emit('read_receipt', { conversationId, messageId })
