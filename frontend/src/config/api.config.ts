@@ -13,7 +13,7 @@ export const API_CONFIG = {
 export const API_ENDPOINTS = {
   // Health
   health: '/health',
-  
+
   // Users
   users: {
     list: '/api/admin/users',
@@ -44,7 +44,7 @@ export const API_ENDPOINTS = {
     update: (id: string) => `/api/admin/credentials/${id}`,
     toggleVisibility: (id: string) => `/api/admin/credentials/${id}/visibility`,
   },
-  
+
   // Proxies
   proxies: {
     list: '/api/admin/proxies',
@@ -53,8 +53,12 @@ export const API_ENDPOINTS = {
     update: (id: string) => `/api/admin/proxies/${id}`,
     delete: (id: string) => `/api/admin/proxies/${id}`,
     test: (id: string) => `/api/admin/proxies/${id}/test`,
+    // NEW: User proxy assignment endpoints
+    userProxies: (userId: string) => `/api/admin/users/${userId}/proxies`,
+    assignToUser: (userId: string, proxyId: string) => `/api/admin/users/${userId}/proxies/${proxyId}/assign`,
+    unassignFromUser: (userId: string, proxyId: string) => `/api/admin/users/${userId}/proxies/${proxyId}`,
   },
-  
+
   // Fingerprint Profiles
   fingerprints: {
     list: '/api/fingerprints',
@@ -63,7 +67,7 @@ export const API_ENDPOINTS = {
     update: (id: string) => `/api/fingerprints/${id}`,
     delete: (id: string) => `/api/fingerprints/${id}`,
   },
-  
+
   // Sessions
   sessions: {
     list: '/api/sessions',
@@ -73,7 +77,7 @@ export const API_ENDPOINTS = {
     delete: (id: string) => `/api/sessions/${id}`,
     end: (id: string) => `/api/sessions/${id}/end`,
   },
-  
+
   // Proxy Chains
   proxyChains: {
     list: '/api/proxy-chains',
@@ -83,7 +87,7 @@ export const API_ENDPOINTS = {
     delete: (id: string) => `/api/proxy-chains/${id}`,
     test: (id: string) => `/api/proxy-chains/${id}/test`,
   },
-  
+
   // Behavior Profiles
   behaviors: {
     list: '/api/behaviors',
@@ -98,7 +102,7 @@ export const API_ENDPOINTS = {
     list: '/api/templates',
     get: (id: string) => `/api/templates/${id}`,
   },
-  
+
   // Logs
   logs: {
     system: '/api/logs/system',
@@ -107,7 +111,7 @@ export const API_ENDPOINTS = {
     cleanupSystem: '/api/logs/system/old',
     cleanupAudit: '/api/logs/audit/old',
   },
-  
+
   // System
   system: {
     stats: '/api/admin/stats',

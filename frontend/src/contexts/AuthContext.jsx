@@ -128,29 +128,52 @@ export const AuthProvider = ({ children }) => {
 
   const checkAuth = async () => {
     try {
-      // Prefer Supabase session if present
-      const { data } = await supabase.auth.getSession();
+      // Check for Supabase session (handles OAuth and email/password from Supabase)
+      const { data, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        console.error("[AuthContext] Session retrieval error:", error);
+        throw error;
+      }
+
       if (data.session) {
         localStorage.setItem("auth_token", data.session.access_token);
-        let enriched = data.session.user;
-        try {
-          const me = await authService.getCurrentUser();
-          if (me && me.id) enriched = { ...data.session.user, ...me };
-        } catch { }
-        setUser(enriched);
+        
+        const supabaseUser = data.session.user;
+        let enrichedUser = {
+          id: supabaseUser.id,
+          email: supabaseUser.email,
+          username: supabaseUser.user_metadata?.username || supabaseUser.user_metadata?.full_name || supabaseUser.email?.split('@')[0],
+          role: supabaseUser.user_metadata?.role || 'user',
+          avatar_url: supabaseUser.user_metadata?.avatar_url,
+          provider: supabaseUser.app_metadata?.provider || 'email',
+        };
+
+        // Only try to fetch from backend if NOT an OAuth provider
+        const isOAuthUser = ['google', 'github', 'discord'].includes(enrichedUser.provider);
+        
+        if (!isOAuthUser) {
+          try {
+            const me = await authService.getCurrentUser();
+            if (me && me.id) {
+              enrichedUser = { ...enrichedUser, ...me };
+            }
+          } catch (err) {
+            console.log('[AuthContext] Backend /auth/me failed, using Supabase data only:', err.message);
+          }
+        }
+
+        setUser(enrichedUser);
         setIsAuthenticated(true);
         return;
       }
 
-      // Fallback: check custom backend token (if any)
-      const token = localStorage.getItem("auth_token");
-      if (token) {
-        const userData = await authService.getCurrentUser();
-        setUser(userData);
-        setIsAuthenticated(true);
-      }
+      // No session found
+      console.log("[AuthContext] No session found");
+      localStorage.removeItem("auth_token");
+      setIsAuthenticated(false);
     } catch (error) {
-      console.error("Auth check failed:", error);
+      console.error("[AuthContext] Auth check failed:", error);
       localStorage.removeItem("auth_token");
       setIsAuthenticated(false);
     } finally {
@@ -194,6 +217,16 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
+      // Deactivate user's proxy in Electron before logout
+      if (user?.id && window.electronAPI?.proxy?.deactivateForUser) {
+        try {
+          await window.electronAPI.proxy.deactivateForUser(user.id);
+          console.log('✅ User proxy deactivated on logout');
+        } catch (err) {
+          console.error('Failed to deactivate proxy on logout:', err);
+        }
+      }
+      
       await authService.logout();
     } catch (error) {
       console.error("Logout error:", error);

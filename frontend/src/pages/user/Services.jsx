@@ -92,7 +92,8 @@ const UserServices = () => {
           serviceId: service.id,
           url: service.url,
           username: credentials.username,
-          password: credentials.password
+          password: credentials.password,
+          userId: user.id  // Pass userId so proxy can be applied
         });
 
         if (result.success) {

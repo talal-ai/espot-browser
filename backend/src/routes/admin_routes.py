@@ -12,7 +12,7 @@ from src.services.supabase_service import supabase_service
 from src.services.encryption_service import encryption_service
 from src.models.database import (
     User, UserCreate, UserUpdate,
-    Proxy, ProxyCreate, ProxyUpdate,
+    Proxy, ProxyCreate, ProxyUpdate, ProxyWithAssignment,
     FingerprintProfile, FingerprintProfileCreate, FingerprintProfileUpdate,
     SystemStats, HealthStatus, Service, ServiceCreate, ServiceUpdate, ServiceWithAssignment,
     ServiceCreateWithCredential, CredentialUpdate, LaunchCredentials
@@ -563,6 +563,63 @@ async def delete_proxy(proxy_id: str, admin=Depends(get_current_admin)):
     except Exception as e:
         logger.error(f"Error deleting proxy {proxy_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete proxy")
+
+
+# ============================================================================
+# PROXY ASSIGNMENT ENDPOINTS
+# ============================================================================
+
+@router.get("/users/{user_id}/proxies", response_model=List[ProxyWithAssignment])
+async def get_user_proxies(user_id: str, admin=Depends(get_current_admin)):
+    """Get all proxies assigned to a user"""
+    try:
+        proxies = await supabase_service.get_user_proxies(user_id)
+        return [ProxyWithAssignment(**row) for row in proxies]
+    except Exception as e:
+        logger.error(f"Error getting user proxies: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get user proxies")
+
+@router.post("/users/{user_id}/proxies/{proxy_id}/assign")
+async def assign_proxy_to_user(
+    user_id: str, 
+    proxy_id: str,
+    body: Optional[dict] = None,
+    admin=Depends(get_current_admin)
+):
+    """Assign a proxy to a user"""
+    try:
+        is_default = body.get("is_default", False) if body else False
+        logger.info(f"Assigning proxy {proxy_id} to user {user_id}, is_default={is_default}")
+        
+        admin_id = admin.get("user_id")
+        admin_uuid = admin_id if isinstance(admin_id, str) and len(admin_id) == 36 else None
+        
+        assigned = await supabase_service.assign_proxy_to_user(
+            proxy_id, user_id, assigned_by=admin_uuid, is_default=is_default
+        )
+        logger.info(f"Successfully assigned proxy {proxy_id} to user {user_id}")
+        return assigned
+    except Exception as e:
+        logger.error(f"Error assigning proxy to user: {e}", exc_info=True)
+        msg = str(e)
+        if "duplicate" in msg.lower() or "unique" in msg.lower():
+            raise HTTPException(status_code=409, detail="Proxy already assigned")
+        raise HTTPException(status_code=500, detail=f"Failed to assign proxy: {str(e)}")
+
+@router.delete("/users/{user_id}/proxies/{proxy_id}")
+async def unassign_proxy_from_user(user_id: str, proxy_id: str, admin=Depends(get_current_admin)):
+    """Unassign a proxy from a user"""
+    try:
+        success = await supabase_service.unassign_proxy_from_user(proxy_id, user_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Proxy assignment not found")
+        logger.info(f"Proxy {proxy_id} unassigned from user {user_id}")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error unassigning proxy from user: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to unassign proxy")
 
 @router.post("/proxies/{proxy_id}/test")
 async def test_proxy(proxy_id: str, admin=Depends(get_current_admin)):

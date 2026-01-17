@@ -136,7 +136,10 @@ export const authService = {
         const { data, error } = await supabase.auth.getUser();
 
         if (error) {
-            console.error('[AuthService] Get user error:', error);
+            // Don't log AuthSessionMissingError as it's expected on initial load
+            if (error.name !== 'AuthSessionMissingError') {
+                console.error('[AuthService] Get user error:', error);
+            }
             return null;
         }
 

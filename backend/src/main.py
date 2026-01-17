@@ -38,6 +38,9 @@ from src.chat.socket import sio
 # Load environment variables
 load_dotenv()
 
+# Get environment
+environment = os.getenv("ENVIRONMENT", "development")
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -52,15 +55,13 @@ app = FastAPI(
 )
 
 # CORS middleware - Allow frontend origins
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173").split(",")
+if environment == "development":
+    allowed_origins.append("*")  # Allow all in development
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "*"  # Allow all origins in development
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -148,10 +149,11 @@ async def health_check():
         }
 
 if __name__ == "__main__":
+    port = int(os.getenv("PORT", 8000))
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8000,
+        port=port,
         reload=True,
         log_level="info"
     )

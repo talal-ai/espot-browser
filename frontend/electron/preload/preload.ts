@@ -14,7 +14,7 @@ const api = {
     minimize: () => ipcRenderer.invoke('window:minimize'),
     maximize: () => ipcRenderer.invoke('window:maximize'),
     close: () => ipcRenderer.invoke('window:close'),
-    openUrl: (url: string) => ipcRenderer.invoke('window:openUrl', url),
+    openUrl: (url: string, userId?: string) => ipcRenderer.invoke('window:openUrl', url, userId),
     createForUser: (userId: string, url?: string) => ipcRenderer.invoke('window:createForUser', userId, url),
   },
 

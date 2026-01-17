@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, Menu, shell, nativeImage, session, net } from 'electron';
 import path from 'path';
 import { FingerprintProfile, createSpoofedWindow, applySpoofingProfile } from './fingerprint-injector';
+import { generateModernAutofillScript } from './autofill-generator';
 import axios from 'axios';
 
 // API Base URL for fetching profiles
@@ -169,6 +170,16 @@ function createMainWindow() {
     // Create child window with spoofing if we have an active profile
     (async () => {
       try {
+        // Determine session partition: use active user's partition if available
+        let sessionPartition = undefined;
+        if (activeUserId) {
+          const userSession = userSessions.get(activeUserId);
+          if (userSession) {
+            sessionPartition = userSession.sessionPartition;
+            console.log(`[ESPOT] Using session partition for user ${activeUserId}:`, sessionPartition);
+          }
+        }
+
         // For Google URLs, use stealth window (same as working app)
         if (isGoogleUrl) {
           console.log('[ESPOT] Opening Google URL with stealth window:', url);
@@ -183,7 +194,7 @@ function createMainWindow() {
               spellcheck: false,
               devTools: isDev,
               webSecurity: true,  // Keep enabled for Google trust
-              userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+              partition: sessionPartition, // Use user's session partition with proxy
             },
           });
 
@@ -233,6 +244,7 @@ function createMainWindow() {
               spellcheck: false,
               devTools: isDev,
               webviewTag: true,
+              partition: sessionPartition, // Use user's session partition with proxy
               ...(STRICT_WEBRTC_ENABLED ? { webSecurity: true, sandbox: true } : {}),
             },
           });
@@ -248,6 +260,7 @@ function createMainWindow() {
               nodeIntegration: false,
               contextIsolation: true,
               preload: path.join(__dirname, 'preload.js'),
+              partition: sessionPartition, // Use user's session partition with proxy
               spellcheck: false,
               devTools: isDev,
               webviewTag: true,
@@ -442,20 +455,49 @@ function setupIpcHandlers() {
   });
   ipcMain.handle('window:close', () => mainWindow?.close());
 
-  ipcMain.handle('window:openUrl', (_event, url: string) => {
+  ipcMain.handle('window:openUrl', (_event, url: string, userId?: string) => {
+    // If userId is provided, use their session partition (which has proxy configured)
+    let webPreferences: any = {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+      spellcheck: false,
+      devTools: isDev,
+      ...(STRICT_WEBRTC_ENABLED ? { webSecurity: true, sandbox: true } : {}),
+    };
+
+    // Use user's session partition if userId provided (inherits proxy settings)
+    if (userId) {
+      const userSession = userSessions.get(userId);
+      if (userSession) {
+        webPreferences.partition = userSession.sessionPartition;
+        console.log(`🔒 Opening URL with user ${userId}'s session (proxy: ${userSession.proxyConfig ? 'active' : 'none'})`);
+      } else {
+        // Create new session partition for this user
+        webPreferences.partition = `persist:user-${userId}`;
+        console.log(`🔒 Opening URL with new session partition for user ${userId}`);
+      }
+    }
+
     const child = new BrowserWindow({
       width: 1200,
       height: 800,
       show: true,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        preload: path.join(__dirname, 'preload.js'),
-        spellcheck: false,
-        devTools: isDev,
-        ...(STRICT_WEBRTC_ENABLED ? { webSecurity: true, sandbox: true } : {}),
-      },
+      webPreferences,
     });
+    
+    // If user has proxy configured, ensure it's applied to this window's session
+    if (userId) {
+      const userSession = userSessions.get(userId);
+      if (userSession?.proxyConfig) {
+        const ses = session.fromPartition(webPreferences.partition);
+        const proxyRules = `${userSession.proxyConfig.protocol}://${userSession.proxyConfig.host}:${userSession.proxyConfig.port}`;
+        ses.setProxy({ proxyRules, proxyBypassRules: '<local>' }).then(() => {
+          console.log(`✅ Proxy applied to child window for user ${userId}`);
+        });
+      }
+    }
+    
     child.loadURL(url);
   });
 
@@ -774,8 +816,7 @@ function setupIpcHandlers() {
           contextIsolation: true,
           // CRITICAL: Keep webSecurity enabled - Google trusts this more
           webSecurity: true,
-          // Use Chrome user agent
-          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+          // User agent is set via session headers below
         },
       });
 
@@ -1078,11 +1119,23 @@ function setupIpcHandlers() {
 
       console.log(`[${launchData.serviceId}] ✅ Service window created (hidden)`);
 
-      // Apply global proxy if active
-      if (activeProxyConfig) {
-        const proxyRules = `${activeProxyConfig.protocol}://${activeProxyConfig.host}:${activeProxyConfig.port}`;
+      // Apply proxy if active (check user-specific proxy first, then global proxy)
+      let proxyToApply = activeProxyConfig;
+      
+      // Check for user-specific proxy (from user session)
+      if (launchData.userId) {
+        const userSession = userSessions.get(launchData.userId);
+        if (userSession?.proxyConfig) {
+          proxyToApply = userSession.proxyConfig;
+          console.log(`[${launchData.serviceId}] 🔒 Using user-specific proxy: ${userSession.proxyConfig.host}:${userSession.proxyConfig.port}`);
+        }
+      }
+      
+      if (proxyToApply) {
+        const proxyRules = `${proxyToApply.protocol}://${proxyToApply.host}:${proxyToApply.port}`;
         const ses = session.fromPartition(`persist:service-${launchData.serviceId}`);
         await ses.setProxy({ proxyRules, proxyBypassRules: '<local>' });
+        console.log(`[${launchData.serviceId}] 🛡️ Proxy applied to service window`);
       }
 
       // Apply WebRTC hardening
@@ -1159,8 +1212,8 @@ function setupIpcHandlers() {
         })();
       `;
 
-      // Generate autofill script
-      const autofillScript = generateAutofillScript(launchData.username, launchData.password, launchData.url);
+      // Generate autofill script using the modern flow orchestrator
+      const autofillScript = generateModernAutofillScript(launchData.username, launchData.password, launchData.url);
       const initialUrl = new URL(launchData.url);
       const initialPath = initialUrl.pathname.toLowerCase();
 
@@ -1217,8 +1270,9 @@ function setupIpcHandlers() {
       serviceWindow.webContents.on('did-navigate', (_, url) => checkLoginSuccess(url));
       serviceWindow.webContents.on('did-navigate-in-page', (_, url) => {
         checkLoginSuccess(url);
-        // Re-inject autofill for multi-step logins
-        serviceWindow.webContents.executeJavaScript(autofillScript).catch(() => { });
+        // Re-inject autofill for multi-step logins using modern flow
+        const reinjectedScript = generateModernAutofillScript(launchData.username, launchData.password, launchData.url);
+        serviceWindow.webContents.executeJavaScript(reinjectedScript).catch(() => { });
       });
 
       // Load the service URL
@@ -1735,30 +1789,40 @@ function getUserSession(userId: string): UserSession {
 /**
  * Apply proxy to a specific user's session (isolated from other users)
  * This allows different users to use different proxies simultaneously
+ * 
+ * CRITICAL FIX: Also apply to default session so ALL windows are proxied
+ * (matches admin behavior - any child window uses default session)
  */
 async function applyProxyToUserSession(userId: string, proxyConfig: ProxyConfig): Promise<void> {
   try {
     const userSession = getUserSession(userId);
-    const ses = session.fromPartition(userSession.sessionPartition);
-
-    // Build proxy URL WITHOUT authentication
     const proxyRules = `${proxyConfig.protocol}://${proxyConfig.host}:${proxyConfig.port}`;
 
-    // Apply proxy to this user's session only
-    await ses.setProxy({
+    // 1. Apply to user's specific partition
+    const userSes = session.fromPartition(userSession.sessionPartition);
+    await userSes.setProxy({
+      proxyRules: proxyRules,
+      proxyBypassRules: '<local>'
+    });
+
+    // 2. CRITICAL: Also apply to DEFAULT session (like admin does)
+    // This ensures ALL child windows are proxied, not just ones with explicit partition
+    const defaultSes = session.defaultSession;
+    await defaultSes.setProxy({
       proxyRules: proxyRules,
       proxyBypassRules: '<local>'
     });
 
     // Store config
     userSession.proxyConfig = proxyConfig;
+    activeProxyConfig = proxyConfig; // Set global config so service windows get it
 
-    console.log(`✅ Proxy activated for user ${userId} (isolated session)`);
+    console.log(`✅ Proxy activated for user ${userId}`);
     console.log(`   Protocol: ${proxyConfig.protocol}`);
     console.log(`   Host: ${proxyConfig.host}`);
     console.log(`   Port: ${proxyConfig.port}`);
-    console.log(`   Authentication: ${proxyConfig.username ? 'Yes (via app login handler)' : 'No'}`);
-    console.log(`   Other users are not affected`);
+    console.log(`   Applied to: DEFAULT session + user partition`);
+    console.log(`   All browser windows will now use this proxy`);
 
   } catch (error: any) {
     console.error(`❌ Failed to apply proxy to user ${userId}:`, error);
@@ -1768,27 +1832,26 @@ async function applyProxyToUserSession(userId: string, proxyConfig: ProxyConfig)
 
 /**
  * Deactivate proxy for a specific user's session
+ * CRITICAL: Also clear from default session
  */
 async function deactivateUserProxy(userId: string): Promise<void> {
   try {
     const userSession = userSessions.get(userId);
-    if (!userSession) {
-      console.log(`ℹ️  No session found for user ${userId}`);
-      return;
+    
+    // Clear from user's specific partition
+    if (userSession) {
+      const ses = session.fromPartition(userSession.sessionPartition);
+      await ses.setProxy({ proxyRules: '' });
+      userSession.proxyConfig = null;
     }
 
-    const ses = session.fromPartition(userSession.sessionPartition);
-
-    // Clear proxy
-    await ses.setProxy({
-      proxyRules: ''
-    });
-
-    // Clear stored config
-    userSession.proxyConfig = null;
+    // CRITICAL: Also clear from DEFAULT session
+    const defaultSes = session.defaultSession;
+    await defaultSes.setProxy({ proxyRules: '' });
+    activeProxyConfig = null; // Clear global config
 
     console.log(`✅ Proxy deactivated for user ${userId}`);
-    console.log(`   Other users are not affected`);
+    console.log(`   Cleared from: DEFAULT session + user partition`);
 
   } catch (error: any) {
     console.error(`❌ Failed to deactivate proxy for user ${userId}:`, error);
@@ -1840,17 +1903,18 @@ function createUserWindow(userId: string, url: string = 'about:blank'): BrowserW
     applyStrictPermissions(ses);
   }
 
-  // If a global proxy is active, apply it to this user's session as well
-  if (activeProxyConfig) {
-    const proxyRules = `${activeProxyConfig.protocol}://${activeProxyConfig.host}:${activeProxyConfig.port}`;
+  // Determine which proxy to use: user-specific proxy takes priority, then global proxy
+  const proxyToApply = userSession.proxyConfig || activeProxyConfig;
+  
+  if (proxyToApply) {
+    const proxyRules = `${proxyToApply.protocol}://${proxyToApply.host}:${proxyToApply.port}`;
     const userSes = session.fromPartition(userSession.sessionPartition);
     userSes.setProxy({ proxyRules, proxyBypassRules: '<local>' })
       .then(() => {
-        userSession.proxyConfig = activeProxyConfig;
-        console.log(`   Applied global proxy to new user window ${userId}`);
+        console.log(`✅ Proxy applied to user window ${userId}: ${proxyToApply.host}:${proxyToApply.port}`);
       })
       .catch((e) => {
-        console.warn(`   Failed to apply global proxy to new user window ${userId}:`, e);
+        console.warn(`⚠️ Failed to apply proxy to user window ${userId}:`, e);
       });
   }
 

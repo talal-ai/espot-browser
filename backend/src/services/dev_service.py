@@ -3,8 +3,9 @@ Development Service for ESPOT Browser API
 Mock data service for development without Supabase
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
+import uuid
 from src.models.database import (
     User, UserCreate, UserUpdate,
     Proxy, ProxyCreate, ProxyUpdate,
@@ -144,7 +145,12 @@ class DevService:
                 "updated_at": "2024-01-01T00:00:00Z",
             },
         ]
+        
+        # Mock user services (junction table)
         self.mock_user_services = []
+        
+        # Mock user proxies (junction table)
+        self.mock_user_proxies = []
     
     # User Management
     async def create_user(self, user_data: UserCreate) -> User:
@@ -326,6 +332,45 @@ class DevService:
         before = len(self.mock_user_services)
         self.mock_user_services = [r for r in self.mock_user_services if not (r["user_id"] == user_id and r["service_id"] == service_id)]
         return len(self.mock_user_services) < before
+
+    # =========================================================================
+    # PROXY ASSIGNMENT METHODS
+    # =========================================================================
+    
+    async def get_user_proxies(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get all proxies assigned to a user"""
+        results = []
+        for rel in self.mock_user_proxies:
+            if rel["user_id"] == user_id:
+                proxy = next((p for p in self.mock_proxies if p["id"] == rel["proxy_id"]), None)
+                if proxy:
+                    proxy_copy = proxy.copy()
+                    proxy_copy["assigned_at"] = rel["created_at"]
+                    proxy_copy["is_default"] = rel.get("is_default", False)
+                    results.append(proxy_copy)
+        return results
+
+    async def assign_proxy_to_user(self, proxy_id: str, user_id: str, assigned_by: Optional[str] = None, is_default: bool = False) -> Dict[str, Any]:
+        """Assign a proxy to a user"""
+        # Remove existing assignment if any
+        self.mock_user_proxies = [r for r in self.mock_user_proxies if not (r["user_id"] == user_id and r["proxy_id"] == proxy_id)]
+        
+        rel = {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "proxy_id": proxy_id,
+            "assigned_by": assigned_by,
+            "is_default": is_default,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+        self.mock_user_proxies.append(rel)
+        return rel
+
+    async def unassign_proxy_from_user(self, proxy_id: str, user_id: str) -> bool:
+        """Unassign a proxy from a user"""
+        before = len(self.mock_user_proxies)
+        self.mock_user_proxies = [r for r in self.mock_user_proxies if not (r["user_id"] == user_id and r["proxy_id"] == proxy_id)]
+        return len(self.mock_user_proxies) < before
 
 # Global development service instance
 dev_service = DevService()

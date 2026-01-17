@@ -1,11 +1,16 @@
 /**
  * Smart Autofill Engine for ESPOT Browser
  * 
+ * DEPRECATED: This module is being phased out in favor of the modern
+ * autofill-generator.ts which uses the shared autofill helpers.
+ * 
  * Multi-layer detection approach for filling login forms:
  * 1. Label-based detection (most human-like)
  * 2. Placeholder detection
  * 3. Type/autocomplete attributes
  * 4. Name/ID heuristics
+ * 
+ * For new implementations, use autofill-generator.ts instead.
  */
 
 export interface AutofillCredentials {
@@ -14,6 +19,7 @@ export interface AutofillCredentials {
 }
 
 /**
+ * @deprecated Use generateModernAutofillScript from autofill-generator.ts instead
  * Generate the autofill injection script
  * This script will be injected into the browser window after page load
  */
@@ -341,6 +347,7 @@ export function generateAutofillScript(credentials: AutofillCredentials): string
 }
 
 /**
+ * @deprecated Use generateModernAutofillScript from autofill-generator.ts instead
  * Generate script for Google-specific login flow
  * Google has a multi-step login that requires special handling
  */

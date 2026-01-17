@@ -885,6 +885,74 @@ class SupabaseService:
             logger.error(f"Error unassigning service {service_id} from user {user_id}: {e}")
             raise
 
+    # =========================================================================
+    # PROXY ASSIGNMENT METHODS
+    # =========================================================================
+    
+    async def get_user_proxies(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get all proxies assigned to a user - mirrors get_user_services pattern"""
+        if self.is_dev_mode:
+            return await dev_service.get_user_proxies(user_id)
+        try:
+            # Mirror the exact pattern used in get_user_services
+            response = self.admin_client.table("user_proxies")\
+                .select("created_at, is_default, proxy:proxies(*)")\
+                .eq("user_id", user_id)\
+                .execute()
+            
+            results = []
+            for row in (response.data or []):
+                proxy = row.get("proxy")
+                if proxy:
+                    proxy["assigned_at"] = row.get("created_at")
+                    proxy["is_default"] = row.get("is_default", False)
+                    results.append(proxy)
+            return results
+        except Exception as e:
+            logger.error(f"Error getting user proxies for {user_id}: {e}")
+            return []
+
+    async def assign_proxy_to_user(self, proxy_id: str, user_id: str, assigned_by: Optional[str] = None, is_default: bool = False) -> Dict[str, Any]:
+        """Assign a proxy to a user"""
+        if self.is_dev_mode:
+            return await dev_service.assign_proxy_to_user(proxy_id, user_id, assigned_by, is_default)
+        try:
+            payload = {
+                "proxy_id": proxy_id,
+                "user_id": user_id,
+                "is_default": is_default
+            }
+            if assigned_by:
+                payload["assigned_by"] = assigned_by
+            
+            response = self.admin_client.table("user_proxies")\
+                .upsert(payload, on_conflict="user_id,proxy_id").execute()
+            
+            if response.data:
+                return response.data[0]
+            
+            # Fallback: fetch the relationship row when upsert returns no data
+            check = self.admin_client.table("user_proxies").select("*")\
+                .eq("user_id", user_id).eq("proxy_id", proxy_id).limit(1).execute()
+            if check.data:
+                return check.data[0]
+            raise Exception("Failed to assign proxy")
+        except Exception as e:
+            logger.error(f"Error assigning proxy {proxy_id} to user {user_id}: {e}")
+            raise
+
+    async def unassign_proxy_from_user(self, proxy_id: str, user_id: str) -> bool:
+        """Unassign a proxy from a user"""
+        if self.is_dev_mode:
+            return await dev_service.unassign_proxy_from_user(proxy_id, user_id)
+        try:
+            self.admin_client.table("user_proxies")\
+                .delete().eq("user_id", user_id).eq("proxy_id", proxy_id).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Error unassigning proxy {proxy_id} from user {user_id}: {e}")
+            raise
+
     
     async def create_service(self, service_data: Dict[str, Any]) -> Dict[str, Any]:
         if self.is_dev_mode:

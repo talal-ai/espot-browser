@@ -7,6 +7,7 @@ import { Skeleton } from '../../components/ui/skeleton';
 import PageSkeleton from '../../components/common/PageSkeleton';
 import { useAuth } from '../../contexts/AuthContext';
 import { servicesService } from '../../services/services.service';
+import { proxiesService } from '../../services/proxies.service';
 import UserChatLauncher from '../../features/chat/components/UserChatLauncher';
 import { usersService } from '../../services/users.service';
 import fingerprintsService from '@/services/fingerprints.service';
@@ -48,6 +49,10 @@ const UserDashboard = () => {
   const [launching, setLaunching] = useState(null);
   const [activating, setActivating] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Proxy state
+  const [userProxies, setUserProxies] = useState([]);
+  const [activeProxy, setActiveProxy] = useState(null);
 
   const [now, setNow] = useState(new Date());
 
@@ -113,6 +118,54 @@ const UserDashboard = () => {
             }
           } else {
             console.error('[DEBUG] Failed to load fingerprint profiles:', fpRes.error, fpRes);
+          }
+          
+          // Load user proxies
+          console.log('[DEBUG] Loading user proxies for user:', user.id);
+          const proxyRes = await proxiesService.getUserProxies(user.id);
+          console.log('[DEBUG] getUserProxies response:', proxyRes);
+          if (proxyRes.success) {
+            const proxies = proxyRes.data || [];
+            console.log('[DEBUG] Proxies received:', proxies.length, proxies);
+            setUserProxies(proxies);
+            
+            // Find default proxy (or first available) and auto-activate
+            const defaultProxy = proxies.find(p => p.is_default) || (proxies.length > 0 ? proxies[0] : null);
+            if (defaultProxy) {
+              setActiveProxy(defaultProxy);
+              console.log('🔥 Auto-activating proxy for user:', user.id, defaultProxy);
+              
+              // Activate proxy in Electron using per-user session (mirrors admin behavior)
+              // This routes ALL browser traffic for this user through their assigned proxy
+              if (window.electronAPI?.proxy?.activateForUser) {
+                try {
+                  const proxyConfig = {
+                    protocol: defaultProxy.protocol || 'http',
+                    host: defaultProxy.host,
+                    port: defaultProxy.port,
+                    username: defaultProxy.username || '',
+                    password: defaultProxy.password || ''
+                  };
+                  
+                  const result = await window.electronAPI.proxy.activateForUser(user.id, proxyConfig);
+                  
+                  if (result.success) {
+                    console.log('✅ User proxy activated in Electron:', result);
+                    toast({
+                      title: '🛡️ Proxy Protection Active',
+                      description: `Your traffic is now routed through ${defaultProxy.host}:${defaultProxy.port}`,
+                      duration: 4000
+                    });
+                  } else {
+                    console.error('❌ Failed to activate user proxy:', result.error);
+                  }
+                } catch (err) {
+                  console.error('❌ Failed to auto-activate proxy:', err);
+                }
+              } else {
+                console.log('ℹ️ Electron proxy API not available (browser mode)');
+              }
+            }
           }
         }
       } catch (e) { console.error(e) }
@@ -336,6 +389,68 @@ const UserDashboard = () => {
           gradient="bg-gradient-to-br from-orange-500 to-orange-600"
         />
       </div>
+
+      {/* Proxy Status Card - Shows all assigned proxies (read-only) */}
+      {userProxies.length > 0 && (
+        <GlassCard>
+          <div className="p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Shield className="w-6 h-6 text-green-500" />
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Proxy Protection</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Your assigned proxy connections</p>
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    // Open IP check page using user's session (with proxy)
+                    if (window.electronAPI?.window?.openUrl) {
+                      window.electronAPI.window.openUrl('https://api.ipify.org?format=json', user?.id);
+                      toast({
+                        title: '🔍 Testing Proxy',
+                        description: 'Opening IP check page - should show proxy IP, not your real IP',
+                      });
+                    } else if (window.electron?.window?.openUrl) {
+                      window.electron.window.openUrl('https://api.ipify.org?format=json', user?.id);
+                      toast({
+                        title: '🔍 Testing Proxy',
+                        description: 'Opening IP check page - should show proxy IP, not your real IP',
+                      });
+                    } else {
+                      window.open('https://api.ipify.org?format=json', '_blank');
+                    }
+                  }}
+                  className="gap-2"
+                >
+                  <Globe className="w-4 h-4" />
+                  Test Proxy
+                </Button>
+                <Badge className="bg-green-500 text-white">Protected</Badge>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {userProxies.map((proxy) => (
+                <div key={proxy.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2 h-2 rounded-full ${proxy.status === 'active' ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                    <div>
+                      <div className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                        <span>{proxy.host}:{proxy.port}</span>
+                        {proxy.is_default && <Badge className="bg-blue-500 text-white text-[10px]">Default</Badge>}
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {proxy.country} • {proxy.protocol?.toUpperCase()} • {proxy.status}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </GlassCard>
+      )}
 
       {/* Profile Card */}
       <GlassCard>

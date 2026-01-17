@@ -30,8 +30,11 @@ const Header = () => {
   // Open Gmail in a new window - uses the existing Google session
   const openGmail = () => {
     // Use Electron IPC to open Gmail (preserves Google session from OAuth)
+    // Pass userId so the window uses the user's session partition (with proxy)
     if (window.electron?.window?.openUrl) {
-      window.electron.window.openUrl('https://mail.google.com');
+      window.electron.window.openUrl('https://mail.google.com', user?.id);
+    } else if (window.electronAPI?.window?.openUrl) {
+      window.electronAPI.window.openUrl('https://mail.google.com', user?.id);
     } else {
       // Fallback for web browser
       window.open('https://mail.google.com', '_blank');

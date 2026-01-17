@@ -249,6 +249,38 @@ class ProxiesService {
       };
     }
   }
+
+  // =========================================================================
+  // PROXY ASSIGNMENT METHODS
+  // =========================================================================
+
+  /**
+   * Get all proxies assigned to a user
+   */
+  async getUserProxies(userId: string): Promise<ApiResponse<Proxy[]>> {
+    return apiService.get<Proxy[]>(API_ENDPOINTS.proxies.userProxies(userId));
+  }
+
+  /**
+   * Assign a proxy to a user
+   */
+  async assignProxyToUser(
+    proxyId: string, 
+    userId: string, 
+    isDefault: boolean = false
+  ): Promise<ApiResponse<any>> {
+    return apiService.post<any>(
+      API_ENDPOINTS.proxies.assignToUser(userId, proxyId),
+      { is_default: isDefault }
+    );
+  }
+
+  /**
+   * Unassign a proxy from a user
+   */
+  async unassignProxyFromUser(proxyId: string, userId: string): Promise<ApiResponse<void>> {
+    return apiService.delete<void>(API_ENDPOINTS.proxies.unassignFromUser(userId, proxyId));
+  }
 }
 
 export const proxiesService = new ProxiesService();

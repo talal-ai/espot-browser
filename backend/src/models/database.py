@@ -128,6 +128,33 @@ class Proxy(ProxyBase):
     class Config:
         from_attributes = True
 
+# Proxy Assignment Models
+class UserProxyBase(BaseModel):
+    """Base user proxy assignment model"""
+    user_id: str
+    proxy_id: str
+    is_default: bool = False
+
+class UserProxyCreate(UserProxyBase):
+    """User proxy creation model"""
+    assigned_by: Optional[str] = None
+
+class UserProxy(UserProxyBase):
+    """User proxy model"""
+    id: str
+    assigned_by: Optional[str] = None
+    created_at: datetime
+    last_used_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+class ProxyWithAssignment(Proxy):
+    """Proxy with assignment metadata"""
+    assigned_at: Optional[datetime] = None
+    assigned_by: Optional[str] = None
+    is_default: bool = False
+
 # Fingerprint Models
 class FingerprintProfileBase(BaseModel):
     """Base fingerprint profile model"""

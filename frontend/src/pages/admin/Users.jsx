@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import DataTable from '../../components/common/DataTable';
 import { useUsers } from '../../hooks/use-users';
 import { servicesService } from '../../services/services.service';
+import { proxiesService } from '../../services/proxies.service';
 import { useToast } from '../../hooks/use-toast';
 import { Badge } from '../../components/ui/badge';
 import PageSkeleton from '../../components/common/PageSkeleton';
@@ -39,6 +40,13 @@ const Users = () => {
   const [serviceStatus, setServiceStatus] = useState('all');
   const [serviceSort, setServiceSort] = useState({ key: 'name', order: 'asc' });
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  
+  // Proxy state
+  const [availableProxies, setAvailableProxies] = useState([]);
+  const [assignedProxies, setAssignedProxies] = useState([]);
+  const [selectedProxyId, setSelectedProxyId] = useState('');
+  const [proxiesLoading, setProxiesLoading] = useState(false);
+  const [setAsDefault, setSetAsDefault] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -92,6 +100,16 @@ const Users = () => {
   }, []);
 
   useEffect(() => {
+    const loadProxies = async () => {
+      setProxiesLoading(true);
+      const res = await proxiesService.getProxies();
+      if (res.success) setAvailableProxies(res.data || []);
+      setProxiesLoading(false);
+    };
+    loadProxies();
+  }, []);
+
+  useEffect(() => {
     const loadAssigned = async () => {
       if (!manageOpen || !editingUser || activeTab !== 'services') return;
       const res = await servicesService.getUserServices(editingUser.id);
@@ -100,10 +118,24 @@ const Users = () => {
     loadAssigned();
   }, [manageOpen, editingUser, activeTab]);
 
+  useEffect(() => {
+    const loadAssignedProxies = async () => {
+      if (!manageOpen || !editingUser || activeTab !== 'proxies') return;
+      const res = await proxiesService.getUserProxies(editingUser.id);
+      if (res.success) setAssignedProxies(res.data || []);
+    };
+    loadAssignedProxies();
+  }, [manageOpen, editingUser, activeTab]);
+
   const unassignedServices = React.useMemo(() => {
     const assignedIds = new Set((assignedServices || []).map((s) => s.id));
     return (availableServices || []).filter((s) => !assignedIds.has(s.id));
   }, [availableServices, assignedServices]);
+
+  const unassignedProxies = React.useMemo(() => {
+    const assignedIds = new Set((assignedProxies || []).map((p) => p.id));
+    return (availableProxies || []).filter((p) => !assignedIds.has(p.id));
+  }, [availableProxies, assignedProxies]);
 
   const resetForm = () => {
     setFormData({
@@ -310,6 +342,7 @@ const Users = () => {
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setActiveTab('details')}><Cog className="w-4 h-4 mr-2" />Details</Button>
               <Button variant="outline" onClick={() => setActiveTab('services')}><Cog className="w-4 h-4 mr-2" />Services</Button>
+              <Button variant="outline" onClick={() => setActiveTab('proxies')}><Cog className="w-4 h-4 mr-2" />Proxies</Button>
               <Button variant="outline" onClick={() => setActiveTab('admin')}><Cog className="w-4 h-4 mr-2" />Admin</Button>
             </div>
             {activeTab === 'details' && (
@@ -466,6 +499,123 @@ const Users = () => {
                         )}
                       </div>
                     </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {activeTab === 'proxies' && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Assign Proxy</Label>
+                  <div className="flex gap-2">
+                    <Select value={selectedProxyId} onValueChange={setSelectedProxyId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a proxy" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {proxiesLoading ? (
+                          <SelectItem disabled value="_loading">Loading proxies...</SelectItem>
+                        ) : unassignedProxies.length === 0 ? (
+                          <SelectItem disabled value="_none">No proxies available</SelectItem>
+                        ) : (
+                          unassignedProxies.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.host}:{p.port} ({p.country}) - {p.protocol}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="setAsDefault"
+                        checked={setAsDefault}
+                        onChange={(e) => setSetAsDefault(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300"
+                      />
+                      <Label htmlFor="setAsDefault" className="text-sm cursor-pointer">Set as default</Label>
+                    </div>
+                    <Button
+                      disabled={!selectedProxyId || !editingUser || assigning}
+                      onClick={async () => {
+                        if (!editingUser) return;
+                        setAssigning(true);
+                        const selected = availableProxies.find((p) => p.id === selectedProxyId);
+                        try {
+                          const result = await proxiesService.assignProxyToUser(
+                            selectedProxyId, 
+                            editingUser.id,
+                            setAsDefault // Use checkbox value
+                          );
+                          if (result.success) {
+                            const t = toast({ 
+                              title: 'Proxy assigned', 
+                              description: selected ? `${selected.host}:${selected.port} assigned to ${editingUser.username || editingUser.email}${setAsDefault ? ' as default' : ''}` : 'Assigned' 
+                            });
+                            setTimeout(() => t.dismiss(), 5000);
+                            const res = await proxiesService.getUserProxies(editingUser.id);
+                            if (res.success) setAssignedProxies(res.data || []);
+                            setSelectedProxyId('');
+                            setSetAsDefault(false);
+                          }
+                        } catch (err) {
+                          console.error('Assign error', err);
+                          const msg = (err?.response?.data?.detail) || 'Could not assign proxy';
+                          toast({ variant: 'destructive', title: 'Assignment failed', description: msg });
+                        } finally {
+                          setAssigning(false);
+                        }
+                      }}
+                    >
+                      {assigning ? 'Assigning...' : 'Assign'}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Assigned Proxies ({assignedProxies.length})</Label>
+                  <div className="border rounded-md divide-y max-h-[300px] overflow-auto">
+                    {!assignedProxies || assignedProxies.length === 0 ? (
+                      <div className="p-4 text-sm text-gray-500 text-center">
+                        No proxies assigned yet
+                      </div>
+                    ) : (
+                      assignedProxies.map((proxy) => (
+                        <div key={proxy.id} className="flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-800">
+                          <div className="flex-1">
+                            <div className="font-medium">
+                              {proxy.host}:{proxy.port}
+                              {proxy.is_default && <Badge className="ml-2 bg-green-500">Default</Badge>}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {proxy.protocol} • {proxy.country} • Status: {proxy.status}
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                const res = await proxiesService.unassignProxyFromUser(proxy.id, editingUser.id);
+                                if (res.success) {
+                                  toast({ title: 'Proxy unassigned' });
+                                  const updated = await proxiesService.getUserProxies(editingUser.id);
+                                  if (updated.success) setAssignedProxies(updated.data || []);
+                                } else {
+                                  toast({ variant: 'destructive', title: 'Failed to unassign proxy' });
+                                }
+                              } catch (err) {
+                                console.error('Unassign error:', err);
+                                toast({ variant: 'destructive', title: 'Error', description: 'Could not unassign proxy' });
+                              }
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>

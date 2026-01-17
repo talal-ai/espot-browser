@@ -1,15 +1,43 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, Wifi, Monitor, Key, AppWindow, Activity, Settings, MessageCircle, Fingerprint } from 'lucide-react';
+import { LayoutDashboard, Users, Wifi, Monitor, Key, AppWindow, Activity, Settings, MessageCircle, Fingerprint, Shield, ShieldOff } from 'lucide-react';
 import Logo from '../common/Logo';
 import { useAuth } from '../../contexts/AuthContext';
 import { useChatNotifications } from '../../hooks/use-chat-notifications';
+import { proxiesService } from '../../services/proxies.service';
 
 const Sidebar = () => {
   const location = useLocation();
   const { user } = useAuth();
   const isAdmin = !!(user && user.role === 'admin');
   const { unreadCount, clearNotifications } = useChatNotifications();
+  
+  // Proxy status state (only for non-admin users)
+  const [proxyStatus, setProxyStatus] = useState({ loading: true, proxy: null });
+
+  // Load user's assigned proxy on mount (only for regular users)
+  useEffect(() => {
+    const loadProxyStatus = async () => {
+      if (!user?.id || isAdmin) {
+        setProxyStatus({ loading: false, proxy: null });
+        return;
+      }
+      try {
+        const res = await proxiesService.getUserProxies(user.id);
+        if (res.success && res.data && res.data.length > 0) {
+          // Find default proxy, or use first one
+          const defaultProxy = res.data.find(p => p.is_default) || res.data[0];
+          setProxyStatus({ loading: false, proxy: defaultProxy });
+        } else {
+          setProxyStatus({ loading: false, proxy: null });
+        }
+      } catch (err) {
+        console.error('Failed to load proxy status:', err);
+        setProxyStatus({ loading: false, proxy: null });
+      }
+    };
+    loadProxyStatus();
+  }, [user, isAdmin]);
 
   const menuItems = isAdmin
     ? [
@@ -44,6 +72,36 @@ const Sidebar = () => {
             </div>
           </div>
         </div>
+
+        {/* Proxy Status Indicator (for regular users only) */}
+        {!isAdmin && (
+          <div className="px-4 pb-4">
+            {proxyStatus.loading ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800/50 animate-pulse">
+                <div className="w-4 h-4 rounded-full bg-gray-300 dark:bg-gray-600" />
+                <span className="text-xs text-gray-400">Loading...</span>
+              </div>
+            ) : proxyStatus.proxy ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/20">
+                <Shield className="w-4 h-4 text-green-500 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-green-600 dark:text-green-400">Protected</p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
+                    {proxyStatus.proxy.host}:{proxyStatus.proxy.port}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                <ShieldOff className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400">No Proxy</p>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500">Direct connection</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Navigation */}
         <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">

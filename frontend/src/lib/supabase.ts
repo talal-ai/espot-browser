@@ -24,6 +24,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
         flowType: 'pkce',
         // Storage key prefix
         storageKey: 'espot-auth',
+        // Use localStorage explicitly for session persistence
+        storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+        debug: false, // Set to true for debugging auth issues
     },
 });
 
