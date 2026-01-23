@@ -144,7 +144,7 @@ function createMainWindow() {
     mainWindow.webContents.openDevTools();
   } else {
     // In production, load from built files
-    mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
   // Show window when ready
@@ -1987,4 +1987,3 @@ function hardenWebRTC(_win: BrowserWindow) {
 function applyStrictPermissions(_ses: any) {
   // Disabled for Google login compatibility - allow all permissions
 }
-
