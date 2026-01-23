@@ -213,7 +213,8 @@ Electron window should open with the dashboard.
   ```bash
   sudo apt-get install libx11-dev libxkbfile-dev
   ```
-- `npm run dist:win` requires Wine on Linux (electron-builder limitation). Prefer building Windows installers on Windows hosts.
+
+> ⚠️ `npm run dist:win` requires Wine on Linux (electron-builder limitation). Prefer building Windows installers on Windows hosts.
 
 ---
 

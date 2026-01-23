@@ -34,7 +34,7 @@ npm install
 npm run dist:win
 ```
 
-**Note:** Windows packaging must run on Windows, or on Linux with Wine installed (electron-builder requires Wine for `dist:win`).
+> ⚠️ `dist:win` requires Wine when building on Linux (electron-builder limitation). Prefer building Windows installers on Windows hosts.
 
 **Output:**
 - `frontend/release/ESPOT Browser-1.0.0-x64-Setup.exe` (Installer)
