@@ -24,6 +24,8 @@ Copy-Item frontend\.env.production.local frontend\.env
 .\build.ps1 all
 ```
 
+> ⚠️ `dist:win` requires Windows or Wine on Linux (electron-builder needs Wine for Windows packaging).
+
 ### Step 3: Find Your App
 ```
 📦 Output: frontend\release\
