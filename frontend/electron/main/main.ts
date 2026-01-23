@@ -125,7 +125,7 @@ function createMainWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
       spellcheck: false,
-      devTools: isDev,
+      devTools: true, // Enable DevTools for debugging (was: isDev)
       webviewTag: true, // Enable <webview> tag for browser-like tab functionality
       ...(STRICT_WEBRTC_ENABLED ? { webSecurity: true, sandbox: true } : {}),
     },
@@ -144,12 +144,35 @@ function createMainWindow() {
     mainWindow.webContents.openDevTools();
   } else {
     // In production, load from built files
-    mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
+    // app.getAppPath() correctly resolves to the app root (app.asar or app folder)
+    const htmlPath = path.join(app.getAppPath(), 'dist/index.html');
+    
+    console.log('Production mode - Loading from:', htmlPath);
+    console.log('app.getAppPath():', app.getAppPath());
+    
+    mainWindow.loadFile(htmlPath).catch((err) => {
+      console.error('Failed to load HTML file:', err);
+    });
+    
+    // Open DevTools in production for debugging
+    setTimeout(() => {
+      mainWindow?.webContents.openDevTools();
+    }, 1000);
   }
 
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
+  });
+
+  // Log renderer console messages
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[Renderer] ${message} (${sourceId}:${line})`);
+  });
+
+  // Log renderer crashes
+  mainWindow.webContents.on('crashed', (event, killed) => {
+    console.error('Renderer process crashed:', { killed });
   });
 
   if (mainWindow && STRICT_WEBRTC_ENABLED) {

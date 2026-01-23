@@ -35,6 +35,7 @@ function createMainWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      webSecurity: false, // TEMP: Disabled for testing - remove in production
       preload: path.join(__dirname, isDev ? '../preload/index.js' : './preload.js'),
       spellcheck: false,
       devTools: isDev,
@@ -75,8 +76,10 @@ function createMainWindow() {
       console.error('[ESPOT] Failed to load index.html:', err);
     });
     
-    // TEMP: Open DevTools in production to debug
-    mainWindow.webContents.openDevTools();
+    // Open DevTools for debugging
+    setTimeout(() => {
+      mainWindow?.webContents.openDevTools();
+    }, 1000);
   }
 
   // Show window when ready
