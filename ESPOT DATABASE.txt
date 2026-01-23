@@ -1,4 +1,4 @@
 ESPOT DATABASE:
 
-supabase database password: jy8rO6IjPv81eo6e
+supabase database password: [MOVED TO .env FILE - SEE BACKEND/.ENV.EXAMPLE]
 

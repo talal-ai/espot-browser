@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === 'development';
 
 // API Base URL
-const API_BASE_URL = isDev ? 'http://localhost:8000' : 'http://localhost:8000';
+const API_BASE_URL = process.env.API_BASE_URL ?? (isDev ? 'http://localhost:8000' : 'https://espot-browser.onrender.com');
 
 // Global reference to mainWindow to prevent garbage collection
 let mainWindow: BrowserWindow | null = null;
@@ -35,26 +35,48 @@ function createMainWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, '../preload/index.js'),
+      preload: path.join(__dirname, isDev ? '../preload/index.js' : './preload.js'),
       spellcheck: false,
       devTools: isDev,
     },
   });
 
+  // Set window title
+  mainWindow.setTitle('ESPOT Browser');
+
+  // Add listeners to catch renderer process errors
+  mainWindow.webContents.on('crashed', () => {
+    console.error('[ESPOT] Renderer process crashed');
+  });
+  
+  mainWindow.webContents.on('console-message', (level, message, line, sourceId) => {
+    console.log(`[RENDERER] [${level}] ${message} (${sourceId}:${line})`);
+  });
+
   // Load the app
   if (isDev) {
-    // In development, load from Vite dev server (dashboard will be loaded by React Router)
+    // In development, load from Vite dev server
     mainWindow.loadURL('http://localhost:5173').catch((err) => {
       console.error('Failed to load URL:', err);
-      // Retry after a short delay if Vite server isn't ready yet
       setTimeout(() => {
         mainWindow?.loadURL('http://localhost:5173');
       }, 1000);
     });
     mainWindow.webContents.openDevTools();
   } else {
-    // In production, load from built files
-    mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
+    // In production, load from dist folder
+    const fs = require('fs');
+    const indexPath = path.join(__dirname, '..', 'dist', 'index.html');
+    console.log('[ESPOT] __dirname:', __dirname);
+    console.log('[ESPOT] Attempting to load:', indexPath);
+    console.log('[ESPOT] File exists:', fs.existsSync(indexPath));
+    
+    mainWindow.loadFile(indexPath).catch((err) => {
+      console.error('[ESPOT] Failed to load index.html:', err);
+    });
+    
+    // TEMP: Open DevTools in production to debug
+    mainWindow.webContents.openDevTools();
   }
 
   // Show window when ready
@@ -79,9 +101,9 @@ function createMainWindow() {
         try {
           const response = await axios.get(`${API_BASE_URL}/api/fingerprints/${profileId}`);
           profile = response.data;
-          console.log('[ESPOT] ✅ Fetched profile from backend:', profile.name);
+          console.log('[ESPOT] ✅ Fetched profile from backend:', profile?.name);
         } catch (error) {
-          console.error('[ESPOT] ❌ Failed to fetch profile:', error.message);
+          console.error('[ESPOT] ❌ Failed to fetch profile:', error instanceof Error ? error.message : String(error));
         }
       }
       
@@ -98,7 +120,7 @@ function createMainWindow() {
             console.log('[ESPOT] ✅ Using default profile for user');
           }
         } catch (error) {
-          console.error('[ESPOT] ❌ Failed to fetch user profiles:', error.message);
+          console.error('[ESPOT] ❌ Failed to fetch user profiles:', error instanceof Error ? error.message : String(error));
         }
       }
       
@@ -143,7 +165,7 @@ function createMainWindow() {
       }
     } catch (error) {
       console.error('[ESPOT] ❌ Error launching browser:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
