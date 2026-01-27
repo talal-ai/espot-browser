@@ -48,8 +48,8 @@ const Sidebar = () => {
       { icon: Monitor, label: 'Sessions', path: '/admin/sessions' },
       { icon: Key, label: 'Credentials', path: '/admin/credentials' },
       { icon: AppWindow, label: 'Services', path: '/admin/services' },
+      { icon: Users, label: 'Groups', path: '/admin/groups' },
       { icon: MessageCircle, label: 'Conversations', path: '/admin/conversations' },
-      { icon: Activity, label: 'Diagnostics', path: '/admin/diagnostics' },
       { icon: Settings, label: 'Settings', path: '/admin/settings' }
     ]
     : [

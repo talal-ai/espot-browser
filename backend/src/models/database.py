@@ -52,6 +52,7 @@ class UserBase(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
     role: UserRole = UserRole.USER
     status: UserStatus = UserStatus.ACTIVE
+    max_devices: Optional[int] = Field(default=1, ge=1, description="Maximum concurrent devices/sessions allowed")
 
 class UserCreate(UserBase):
     """User creation model"""
@@ -64,6 +65,7 @@ class UserUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
     role: Optional[UserRole] = None
     status: Optional[UserStatus] = None
+    max_devices: Optional[int] = Field(None, ge=1, description="Maximum concurrent devices/sessions allowed")
 
 class User(UserBase):
     """User model"""
@@ -502,3 +504,24 @@ class HealthStatus(BaseModel):
     redis_connected: bool
     proxy_health: float
     system_load: float
+
+# Dashboard Models
+class ChartDataPoint(BaseModel):
+    """Generic chart data point"""
+    name: str
+    value: int | float
+
+class ActivityItem(BaseModel):
+    """Recent activity item"""
+    user: str
+    action: str
+    time: str
+    type: str  # login, logout, proxy, service
+
+class DashboardCharts(BaseModel):
+    """Dashboard charts data"""
+    user_activity: List[ChartDataPoint]
+    session_trends: List[ChartDataPoint]
+    service_usage: List[ChartDataPoint]
+    recent_activity: List[ActivityItem]
+

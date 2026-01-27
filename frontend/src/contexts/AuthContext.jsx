@@ -168,6 +168,39 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
+      // No Supabase session - check for backend JWT token (username/password auth)
+      const backendToken = localStorage.getItem("auth_token");
+      if (backendToken) {
+        console.log("[AuthContext] No Supabase session, but found backend token - verifying...");
+        try {
+          // Validate backend token via /auth/verify endpoint
+          const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/verify`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${backendToken}`,
+              'Content-Type': 'application/json',
+            },
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.valid && data.user) {
+              console.log("[AuthContext] Backend token valid, user authenticated");
+              setUser(data.user);
+              setIsAuthenticated(true);
+              return;
+            }
+          }
+          
+          // Token invalid, clean up
+          console.log("[AuthContext] Backend token validation failed");
+          localStorage.removeItem("auth_token");
+        } catch (err) {
+          console.error("[AuthContext] Backend token verification error:", err);
+          localStorage.removeItem("auth_token");
+        }
+      }
+
       // No session found
       console.log("[AuthContext] No session found");
       localStorage.removeItem("auth_token");

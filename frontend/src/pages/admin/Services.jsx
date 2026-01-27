@@ -128,28 +128,6 @@ const Services = () => {
     },
     { key: 'category', label: 'Category', sortable: true },
     {
-      key: 'credential',
-      label: 'Credentials',
-      render: (value, row) => {
-        const hasCredential = row.credential || value;
-        return (
-          <div className="flex items-center gap-2">
-            {hasCredential ? (
-              <>
-                <Key className="w-4 h-4 text-green-500" />
-                <span className="text-sm text-green-600 dark:text-green-400">Configured</span>
-              </>
-            ) : (
-              <>
-                <Key className="w-4 h-4 text-gray-400" />
-                <span className="text-sm text-gray-500">Not Set</span>
-              </>
-            )}
-          </div>
-        );
-      }
-    },
-    {
       key: 'status',
       label: 'Status',
       sortable: true,
@@ -159,7 +137,6 @@ const Services = () => {
         </Badge>
       )
     },
-    { key: 'users', label: 'Active Users', sortable: true },
     {
       key: 'actions',
       label: 'Actions',

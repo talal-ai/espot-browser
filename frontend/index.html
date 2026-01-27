@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https: wss:;"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https:; connect-src 'self' https: wss: http://localhost:8000 ws://localhost:8000;"
     />
     <!-- Favicon & PWA manifest generated via RealFaviconGenerator -->
     <link rel="icon" href="/favicon.ico" sizes="any" />
@@ -16,11 +16,7 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <!-- App title for iOS when saved to home screen -->
     <meta name="apple-mobile-web-app-title" content="ESpot Browser" />
-    <!-- Corporate typography: Poppins (body/secondary headings) + Montserrat (primary headings) -->
-    <link
-      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Montserrat:wght@700&display=swap"
-      rel="stylesheet"
-    />
+    <!-- Corporate typography: Poppins + Montserrat (loaded via @fontsource packages in index.jsx) -->
     <title>ESPOT Browser Admin Dashboard</title>
   </head>
   <body>

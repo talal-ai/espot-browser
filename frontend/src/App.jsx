@@ -1,6 +1,6 @@
 import React from "react";
 import "./App.css";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { BrowserProvider } from "./contexts/BrowserContext";
@@ -8,6 +8,7 @@ import MainLayout from "./components/layout/MainLayout";
 import { Toaster } from "./components/ui/toaster";
 import ErrorBoundary from "./components/common/ErrorBoundary";
 import BrowserShell from "./components/browser/BrowserShell";
+import UpdateNotification from "./components/UpdateNotification";
 
 // Pages
 import Auth from "./pages/Auth";
@@ -17,7 +18,7 @@ import AdminProxies from "./pages/admin/Proxies";
 import AdminSessions from "./pages/admin/Sessions";
 import AdminCredentials from "./pages/admin/Credentials";
 import AdminServices from "./pages/admin/Services";
-import AdminDiagnostics from "./pages/admin/Diagnostics";
+import AdminGroups from "./pages/admin/Groups";
 import AdminSettings from "./pages/admin/Settings";
 import AdminConversations from "./pages/admin/Conversations";
 import AdminFingerprints from "./pages/admin/FingerprintsManager";
@@ -66,7 +67,7 @@ function App() {
         <AuthProvider>
           <BrowserProvider>
             <div className="App">
-              <BrowserRouter>
+              <Router>
                 <Routes>
                 <Route path="/auth" element={<Auth />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
@@ -88,7 +89,7 @@ function App() {
                             <Route path="sessions" element={<AdminSessions />} />
                             <Route path="credentials" element={<AdminCredentials />} />
                             <Route path="services" element={<AdminServices />} />
-                            <Route path="diagnostics" element={<AdminDiagnostics />} />
+                            <Route path="groups" element={<AdminGroups />} />
                             <Route path="settings" element={<AdminSettings />} />
                             <Route path="conversations" element={<AdminConversations />} />
                             <Route path="fingerprints" element={<AdminFingerprints />} />
@@ -120,8 +121,9 @@ function App() {
                   }
                 />
                 </Routes>
-              </BrowserRouter>
+              </Router>
               <Toaster />
+              <UpdateNotification />
             </div>
           </BrowserProvider>
         </AuthProvider>

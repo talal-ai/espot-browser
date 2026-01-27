@@ -1,11 +1,17 @@
 import { app, BrowserWindow, ipcMain, Menu, shell, nativeImage, session, net } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import path from 'path';
 import { FingerprintProfile, createSpoofedWindow, applySpoofingProfile } from './fingerprint-injector';
 import { generateModernAutofillScript } from './autofill-generator';
 import axios from 'axios';
 
+const APP_ID = 'com.espot.browser';
+const APP_NAME = 'ESPOT Browser';
+
 // API Base URL for fetching profiles
-const API_BASE_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:8000' : 'http://localhost:8000';
+const API_BASE_URL = process.env.API_BASE_URL ?? (process.env.NODE_ENV === 'development'
+  ? 'http://localhost:8000'
+  : 'https://espot-browser.onrender.com');
 
 // Check if in development mode
 const isDev = process.env.NODE_ENV === 'development';
@@ -38,12 +44,24 @@ app.on('child-process-gone', (event, details) => {
 // The working app doesn't use these - they trigger Google detection
 // Stealth is applied per-window in the IPC handlers instead
 
+// Ensure OS-level identity is branded before windows are created
+if (app.setName) app.setName(APP_NAME);
+if (app.setAppUserModelId) app.setAppUserModelId(APP_ID);
+
 // Global reference to mainWindow to prevent garbage collection
 let mainWindow: BrowserWindow | null = null;
 
 // Global app icon for all windows
-const devIconPath = path.join(process.cwd(), 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
-const appIcon = isDev ? (nativeImage.createFromPath(devIconPath) || undefined) : undefined;
+const iconFileName = process.platform === 'win32' ? 'espot-logo.ico' : 'icon.png';
+const appIconPath = path.join(__dirname, '..', 'assets', iconFileName);
+console.log('[ESPOT] Loading app icon from:', appIconPath);
+const rawAppIcon = nativeImage.createFromPath(appIconPath);
+const windowIcon = rawAppIcon.isEmpty() ? undefined : rawAppIcon;
+if (rawAppIcon.isEmpty()) {
+  console.warn('[ESPOT] Warning: App icon is empty or could not be loaded');
+} else {
+  console.log('[ESPOT] App icon loaded successfully');
+}
 
 // Global fingerprint profile tracking
 let activeProfile: FingerprintProfile | null = null;
@@ -119,13 +137,15 @@ function createMainWindow() {
     show: false,
     frame: true,
     titleBarStyle: 'default',
-    icon: isDev ? (nativeImage.createFromPath(devIconPath) || undefined) : undefined,
+    icon: windowIcon,
+    fullscreen: true,
+    fullscreenable: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
       spellcheck: false,
-      devTools: true, // Enable DevTools for debugging (was: isDev)
+      devTools: isDev,
       webviewTag: true, // Enable <webview> tag for browser-like tab functionality
       ...(STRICT_WEBRTC_ENABLED ? { webSecurity: true, sandbox: true } : {}),
     },
@@ -144,12 +164,9 @@ function createMainWindow() {
     mainWindow.webContents.openDevTools();
   } else {
     // In production, load from built files
-    // app.getAppPath() correctly resolves to the app root (app.asar or app folder)
-    const htmlPath = path.join(app.getAppPath(), 'dist/index.html');
-    
+    const htmlPath = path.join(__dirname, '../dist/index.html');
     console.log('Production mode - Loading from:', htmlPath);
-    console.log('app.getAppPath():', app.getAppPath());
-    
+    console.log('__dirname:', __dirname);
     mainWindow.loadFile(htmlPath).catch((err) => {
       console.error('Failed to load HTML file:', err);
     });
@@ -210,6 +227,7 @@ function createMainWindow() {
             width: 600,
             height: 700,
             show: true,
+            icon: windowIcon,
             webPreferences: {
               nodeIntegration: false,
               contextIsolation: true,
@@ -260,6 +278,7 @@ function createMainWindow() {
             width: 1200,
             height: 800,
             show: true,
+            icon: windowIcon,
             webPreferences: {
               nodeIntegration: false,
               contextIsolation: true,
@@ -279,6 +298,7 @@ function createMainWindow() {
             width: 1200,
             height: 800,
             show: true,
+            icon: windowIcon,
             webPreferences: {
               nodeIntegration: false,
               contextIsolation: true,
@@ -383,6 +403,9 @@ app.whenReady().then(() => {
 
   // Now create the main window (after handlers are ready)
   createMainWindow();
+
+  // Initialize auto-updater after window is created
+  setupAutoUpdater();
 
   // Re-create window on activation (macOS)
   app.on('activate', () => {
@@ -506,6 +529,7 @@ function setupIpcHandlers() {
       width: 1200,
       height: 800,
       show: true,
+      icon: windowIcon,
       webPreferences,
     });
     
@@ -834,6 +858,7 @@ function setupIpcHandlers() {
         maximizable: false,
         title: 'Sign in with Google',
         show: true,
+        icon: windowIcon,
         webPreferences: {
           nodeIntegration: false,
           contextIsolation: true,
@@ -1026,6 +1051,7 @@ function setupIpcHandlers() {
           width: 1200,
           height: 800,
           show: true,
+          icon: windowIcon,
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -1047,7 +1073,7 @@ function setupIpcHandlers() {
           width: 1200,
           height: 800,
           show: true,
-          icon: appIcon,
+          icon: windowIcon,
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -1111,6 +1137,7 @@ function setupIpcHandlers() {
           height: 900,
           show: false,  // CRITICAL: Start hidden to prevent any flash
           backgroundColor: '#0a0a0a',
+          icon: windowIcon,
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -1127,7 +1154,7 @@ function setupIpcHandlers() {
           height: 900,
           show: false,
           backgroundColor: '#0a0a0a',
-          icon: appIcon,
+          icon: windowIcon,
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -1909,6 +1936,7 @@ function createUserWindow(userId: string, url: string = 'about:blank'): BrowserW
     width: 1200,
     height: 800,
     show: true,
+    icon: windowIcon,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -2010,4 +2038,158 @@ function hardenWebRTC(_win: BrowserWindow) {
 function applyStrictPermissions(_ses: any) {
   // Disabled for Google login compatibility - allow all permissions
 }
+
+// ============================================
+// AUTO-UPDATER CONFIGURATION
+// ============================================
+
+// Update status tracking
+let updateStatus: {
+  checking: boolean;
+  available: boolean;
+  downloaded: boolean;
+  progress: number;
+  version: string | null;
+  error: string | null;
+} = {
+  checking: false,
+  available: false,
+  downloaded: false,
+  progress: 0,
+  version: null,
+  error: null,
+};
+
+/**
+ * Initialize auto-updater (only in production builds)
+ */
+function setupAutoUpdater() {
+  if (isDev) {
+    console.log('[AUTO-UPDATE] Skipping auto-updater in development mode');
+    return;
+  }
+
+  console.log('[AUTO-UPDATE] Initializing auto-updater...');
+  
+  // Configure update behavior
+  autoUpdater.autoDownload = false; // Don't auto-download, let user decide
+  autoUpdater.autoInstallOnAppQuit = true; // Install update when user quits app
+  
+  // Log all auto-updater events
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[AUTO-UPDATE] Checking for updates...');
+    updateStatus.checking = true;
+    updateStatus.error = null;
+    sendUpdateStatusToRenderer();
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[AUTO-UPDATE] Update available:', info.version);
+    updateStatus.checking = false;
+    updateStatus.available = true;
+    updateStatus.version = info.version;
+    sendUpdateStatusToRenderer();
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('[AUTO-UPDATE] No updates available. Current version:', info.version);
+    updateStatus.checking = false;
+    updateStatus.available = false;
+    sendUpdateStatusToRenderer();
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[AUTO-UPDATE] Error:', err);
+    updateStatus.checking = false;
+    updateStatus.error = err.message;
+    sendUpdateStatusToRenderer();
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    const logMessage = `[AUTO-UPDATE] Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}% (${progressObj.transferred}/${progressObj.total})`;
+    console.log(logMessage);
+    updateStatus.progress = Math.round(progressObj.percent);
+    sendUpdateStatusToRenderer();
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[AUTO-UPDATE] Update downloaded:', info.version);
+    updateStatus.downloaded = true;
+    updateStatus.progress = 100;
+    sendUpdateStatusToRenderer();
+  });
+
+  // If a local generic update server is configured for testing, use it
+  if (process.env.UPDATE_SERVER_URL) {
+    try {
+      autoUpdater.setFeedURL({ provider: 'generic', url: process.env.UPDATE_SERVER_URL });
+      console.log('[AUTO-UPDATE] Using generic feed URL:', process.env.UPDATE_SERVER_URL);
+    } catch (err) {
+      console.warn('[AUTO-UPDATE] Failed to set generic feed URL:', err);
+    }
+  }
+
+  // Check for updates 10 seconds after app start
+  setTimeout(() => {
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+      console.error('[AUTO-UPDATE] Failed to check for updates:', err);
+    });
+  }, 10000);
+}
+
+/**
+ * Send update status to renderer process
+ */
+function sendUpdateStatusToRenderer() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-status', updateStatus);
+  }
+}
+
+// IPC handlers for update operations
+ipcMain.handle('updates:check', async () => {
+  if (isDev) {
+    return { success: false, error: 'Updates disabled in development' };
+  }
+  
+  try {
+    await autoUpdater.checkForUpdates();
+    return { success: true };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    };
+  }
+});
+
+ipcMain.handle('updates:download', async () => {
+  if (isDev) {
+    return { success: false, error: 'Updates disabled in development' };
+  }
+  
+  try {
+    await autoUpdater.downloadUpdate();
+    return { success: true };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    };
+  }
+});
+
+ipcMain.handle('updates:install', () => {
+  if (isDev) {
+    return { success: false, error: 'Updates disabled in development' };
+  }
+  
+  // Quit and install the update
+  autoUpdater.quitAndInstall(false, true);
+  return { success: true };
+});
+
+ipcMain.handle('updates:getStatus', () => {
+  return updateStatus;
+});
 

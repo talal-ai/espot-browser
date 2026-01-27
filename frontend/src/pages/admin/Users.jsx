@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, RefreshCw, Cog, Trash2, Search, CheckCircle2 } from 'lucide-react';
+import { Plus, RefreshCw, Cog, Trash2, Search, CheckCircle2, Monitor, LogOut } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '../../components/ui/alert-dialog';
@@ -25,7 +25,8 @@ const Users = () => {
     name: '',
     password: '',
     role: 'user',
-    status: 'active'
+    status: 'active',
+    max_devices: 1
   });
   const [manageOpen, setManageOpen] = useState(false);
   const [availableServices, setAvailableServices] = useState([]);
@@ -47,6 +48,10 @@ const Users = () => {
   const [selectedProxyId, setSelectedProxyId] = useState('');
   const [proxiesLoading, setProxiesLoading] = useState(false);
   const [setAsDefault, setSetAsDefault] = useState(false);
+
+  // Device state
+  const [devicesData, setDevicesData] = useState({ max_devices: 1, active_count: 0, devices: [] });
+  const [devicesLoading, setDevicesLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -84,7 +89,8 @@ const Users = () => {
       name: user.name || '',
       password: '', // Don't populate password for security
       role: user.role || 'user',
-      status: user.status
+      status: user.status,
+      max_devices: user.max_devices || 1
     });
     setIsDialogOpen(false);
   };
@@ -144,9 +150,52 @@ const Users = () => {
       name: '',
       password: '',
       role: 'user',
-      status: 'active'
+      status: 'active',
+      max_devices: 1
     });
     setEditingUser(null);
+  };
+
+  // Load devices when Devices tab is active
+  useEffect(() => {
+    const loadDevices = async () => {
+      if (!manageOpen || !editingUser || activeTab !== 'devices') return;
+      setDevicesLoading(true);
+      try {
+        const response = await fetch(`http://localhost:8000/api/admin/users/${editingUser.id}/devices`);
+        if (response.ok) {
+          const data = await response.json();
+          setDevicesData(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch devices:', err);
+      } finally {
+        setDevicesLoading(false);
+      }
+    };
+    loadDevices();
+  }, [manageOpen, editingUser, activeTab]);
+
+  const handleForceLogout = async (sessionId) => {
+    if (!editingUser) return;
+    try {
+      const response = await fetch(`http://localhost:8000/api/admin/users/${editingUser.id}/devices/${sessionId}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        toast({ title: 'Device logged out successfully' });
+        // Refresh devices list
+        const refreshResponse = await fetch(`http://localhost:8000/api/admin/users/${editingUser.id}/devices`);
+        if (refreshResponse.ok) {
+          setDevicesData(await refreshResponse.json());
+        }
+      } else {
+        toast({ variant: 'destructive', title: 'Failed to log out device' });
+      }
+    } catch (err) {
+      console.error('Force logout error:', err);
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to log out device' });
+    }
   };
 
   const columns = [
@@ -343,6 +392,7 @@ const Users = () => {
               <Button variant="outline" onClick={() => setActiveTab('details')}><Cog className="w-4 h-4 mr-2" />Details</Button>
               <Button variant="outline" onClick={() => setActiveTab('services')}><Cog className="w-4 h-4 mr-2" />Services</Button>
               <Button variant="outline" onClick={() => setActiveTab('proxies')}><Cog className="w-4 h-4 mr-2" />Proxies</Button>
+              <Button variant="outline" onClick={() => setActiveTab('devices')}><Monitor className="w-4 h-4 mr-2" />Devices</Button>
               <Button variant="outline" onClick={() => setActiveTab('admin')}><Cog className="w-4 h-4 mr-2" />Admin</Button>
             </div>
             {activeTab === 'details' && (
@@ -612,6 +662,79 @@ const Users = () => {
                             }}
                           >
                             <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            {activeTab === 'devices' && (
+              <div className="space-y-6">
+                {/* Max Devices Setting */}
+                <div className="space-y-2">
+                  <Label htmlFor="max_devices">Max Devices Allowed</Label>
+                  <div className="flex items-center gap-4">
+                    <Input
+                      id="max_devices"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={formData.max_devices}
+                      onChange={(e) => setFormData({ ...formData, max_devices: parseInt(e.target.value) || 1 })}
+                      className="w-24"
+                    />
+                    <Button
+                      onClick={async () => {
+                        if (!editingUser) return;
+                        const result = await updateUser(editingUser.id, { max_devices: formData.max_devices });
+                        if (result.success) {
+                          toast({ title: 'Device limit updated', description: `Max devices set to ${formData.max_devices}` });
+                        } else {
+                          toast({ variant: 'destructive', title: 'Update failed' });
+                        }
+                      }}
+                    >
+                      Save Limit
+                    </Button>
+                  </div>
+                  <p className="text-sm text-gray-500">
+                    Current usage: {devicesData.active_count} of {devicesData.max_devices} devices
+                  </p>
+                </div>
+
+                {/* Active Devices List */}
+                <div className="space-y-2">
+                  <Label>Active Devices ({devicesData.active_count})</Label>
+                  <div className="border rounded-md divide-y max-h-[300px] overflow-auto">
+                    {devicesLoading ? (
+                      <div className="p-4 text-sm text-gray-500 text-center">Loading devices...</div>
+                    ) : devicesData.devices.length === 0 ? (
+                      <div className="p-4 text-sm text-gray-500 text-center">No active devices</div>
+                    ) : (
+                      devicesData.devices.map((device) => (
+                        <div key={device.id} className="flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-800">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <Monitor className="w-4 h-4 text-green-500" />
+                              <span className="font-medium">{device.ip_address || 'Unknown IP'}</span>
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {device.user_agent ? device.user_agent.substring(0, 60) + '...' : 'Unknown browser'}
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              Logged in: {device.started_at ? new Date(device.started_at).toLocaleString() : 'Unknown'}
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => handleForceLogout(device.id)}
+                          >
+                            <LogOut className="w-4 h-4 mr-1" />
+                            Force Logout
                           </Button>
                         </div>
                       ))

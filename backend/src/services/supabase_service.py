@@ -18,7 +18,8 @@ from src.models.database import (
     BehaviorProfile, BehaviorProfileCreate, BehaviorProfileUpdate,
     SystemLog, SystemLogCreate,
     AuditLog, AuditLogCreate,
-    SystemStats, HealthStatus
+    SystemStats, HealthStatus,
+    ChartDataPoint, ActivityItem, DashboardCharts
 )
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,43 @@ class SupabaseService:
                 
         except Exception as e:
             logger.error(f"Error creating user: {e}")
+            raise
+    
+    async def get_service_users(self, service_id: str) -> List[Dict[str, Any]]:
+        """Get all users assigned to a specific service"""
+        try:
+            # Step 1: Get user_services entries for this service
+            user_services_response = self.admin_client.table("user_services")\
+                .select("*")\
+                .eq("service_id", service_id)\
+                .execute()
+            
+            if not user_services_response.data:
+                return []
+            
+            # Extract user_ids and assignment info
+            user_ids = [item["user_id"] for item in user_services_response.data]
+            assignment_map = {item["user_id"]: item for item in user_services_response.data}
+            
+            # Step 2: Get user details for each user_id
+            users_response = self.admin_client.table("users")\
+                .select("*")\
+                .in_("id", user_ids)\
+                .execute()
+            
+            users = []
+            for user in users_response.data:
+                # Combine user info with assignment info
+                user_data = dict(user)
+                assignment = assignment_map.get(user["id"], {})
+                user_data["assigned_at"] = assignment.get("created_at")
+                user_data["assigned_by"] = assignment.get("assigned_by")
+                users.append(user_data)
+            
+            return users
+            
+        except Exception as e:
+            logger.error(f"Error getting service users for {service_id}: {e}", exc_info=True)
             raise
     
     async def get_user(self, user_id: str) -> Optional[User]:
@@ -526,6 +564,51 @@ class SupabaseService:
             logger.error(f"Error terminating all sessions: {e}")
             raise
 
+    # Device Limit Helper Methods
+    async def count_user_active_sessions(self, user_id: str) -> int:
+        """Count active sessions for a user (for device limit enforcement)"""
+        try:
+            response = self.admin_client.table("user_sessions")\
+                .select("id", count="exact")\
+                .eq("user_id", user_id)\
+                .eq("is_active", True)\
+                .execute()
+            return response.count if response.count else 0
+        except Exception as e:
+            logger.error(f"Error counting active sessions for user {user_id}: {e}")
+            return 0
+
+    async def get_user_active_sessions(self, user_id: str) -> List[dict]:
+        """Get all active sessions for a user with device details"""
+        try:
+            response = self.admin_client.table("user_sessions")\
+                .select("id, ip_address, user_agent, started_at, is_active")\
+                .eq("user_id", user_id)\
+                .eq("is_active", True)\
+                .order("started_at", desc=True)\
+                .execute()
+            return response.data or []
+        except Exception as e:
+            logger.error(f"Error getting active sessions for user {user_id}: {e}")
+            return []
+
+    async def terminate_user_session(self, session_id: str) -> bool:
+        """Terminate a specific user session (force logout)"""
+        try:
+            update_data = {
+                "is_active": False,
+                "terminated": True,
+                "ended_at": datetime.utcnow().isoformat()
+            }
+            self.admin_client.table("user_sessions")\
+                .update(update_data)\
+                .eq("id", session_id)\
+                .execute()
+            return True
+        except Exception as e:
+            logger.error(f"Error terminating session {session_id}: {e}")
+            raise
+
     # Proxy Chain Management
     async def create_proxy_chain(self, chain_data: ProxyChainCreate) -> ProxyChain:
         """Create a new proxy chain"""
@@ -780,6 +863,137 @@ class SupabaseService:
         except Exception as e:
             logger.error(f"Error getting system stats: {e}")
             raise
+
+    async def get_dashboard_charts(self) -> DashboardCharts:
+        """Get dashboard charts data"""
+        try:
+            from datetime import timedelta
+            
+            # 1. User Activity (Last 7 Days)
+            user_activity = []
+            today = datetime.utcnow().date()
+            for i in range(6, -1, -1):
+                date_val = today - timedelta(days=i)
+                day_start = datetime.combine(date_val, datetime.min.time()).isoformat()
+                day_end = datetime.combine(date_val, datetime.max.time()).isoformat()
+                
+                # Count sessions started on this day
+                # Note: This is an approximation. Ideally we'd group by date in SQL
+                response = self.client.table("user_sessions")\
+                    .select("id", count="exact")\
+                    .gte("started_at", day_start)\
+                    .lte("started_at", day_end)\
+                    .execute()
+                
+                count = response.count if response.count is not None else len(response.data)
+                user_activity.append(ChartDataPoint(
+                    name=date_val.strftime("%a"),
+                    value=count
+                ))
+
+            # 2. Session Trends (Last 4 Weeks)
+            session_trends = []
+            for i in range(3, -1, -1):
+                week_start = today - timedelta(weeks=i+1)
+                week_end = today - timedelta(weeks=i)
+                
+                # Count sessions in this week
+                response = self.client.table("user_sessions")\
+                    .select("id", count="exact")\
+                    .gte("started_at", week_start.isoformat())\
+                    .lt("started_at", week_end.isoformat())\
+                    .execute()
+                
+                count = response.count if response.count is not None else len(response.data)
+                session_trends.append(ChartDataPoint(
+                    name=f"Week {4-i}", 
+                    value=count
+                ))
+
+            # 3. Service Usage
+            service_usage = []
+            # Get counts of user_services grouped by service_id
+            # Since Supabase-py doesn't support complex aggregations easily, fetch all and aggregate in python
+            # or fetch services and count manually
+            
+            # Fetch all user_services
+            us_response = self.client.table("user_services").select("service_id").execute()
+            us_data = us_response.data
+            
+            # Fetch all services
+            svc_response = self.client.table("services").select("id, name").execute()
+            services_map = {s["id"]: s["name"] for s in svc_response.data}
+            
+            usage_counts = {}
+            for item in us_data:
+                sid = item["service_id"]
+                if sid in services_map:
+                    sname = services_map[sid]
+                    usage_counts[sname] = usage_counts.get(sname, 0) + 1
+            
+            # Top 5 services
+            sorted_usage = sorted(usage_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+            for name, count in sorted_usage:
+                service_usage.append(ChartDataPoint(name=name, value=count))
+                
+            # If empty, add placeholder or "Others"
+            if not service_usage and us_data:
+                 service_usage.append(ChartDataPoint(name="Others", value=len(us_data)))
+
+
+            # 4. Recent Activity
+            recent_activity = []
+            # Fetch from audit_logs
+            logs_response = self.client.table("audit_logs")\
+                .select("*, user:users(username)")\
+                .order("created_at", desc=True)\
+                .limit(5)\
+                .execute()
+            
+            for log in logs_response.data:
+                username = "Unknown"
+                if log.get("user"):
+                     username = log["user"].get("username", "Unknown")
+                elif log.get("user_id"):
+                     # Try to fetch user if not joined
+                     pass 
+
+                # Determine type/color from action
+                action = log.get("action", "").lower()
+                act_type = "service"
+                if "login" in action: act_type = "login"
+                elif "logout" in action: act_type = "logout"
+                elif "proxy" in action: act_type = "proxy"
+                
+                # Calculate time ago roughly
+                created_at = datetime.fromisoformat(log["created_at"].replace('Z', '+00:00'))
+                # Simplified time diff for now
+                time_str = created_at.strftime("%H:%M") 
+
+                recent_activity.append(ActivityItem(
+                    user=username,
+                    action=f"{log['action']} {log['resource_type']}",
+                    time=time_str,
+                    type=act_type
+                ))
+
+            return DashboardCharts(
+                user_activity=user_activity,
+                session_trends=session_trends,
+                service_usage=service_usage,
+                recent_activity=recent_activity
+            )
+            
+        except Exception as e:
+            logger.error(f"Error getting dashboard charts: {e}", exc_info=True)
+            # Return empty structure on error to avoid crashing dashboard
+            return DashboardCharts(
+                user_activity=[],
+                session_trends=[],
+                service_usage=[],
+                recent_activity=[]
+            )
+
     
     async def get_health_status(self) -> HealthStatus:
         """Get system health status"""

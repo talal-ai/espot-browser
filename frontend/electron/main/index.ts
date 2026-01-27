@@ -14,13 +14,17 @@ const isDev = process.env.NODE_ENV === 'development';
 // API Base URL
 const API_BASE_URL = process.env.API_BASE_URL ?? (isDev ? 'http://localhost:8000' : 'https://espot-browser.onrender.com');
 
+// Brand identity
+const APP_NAME = 'ESPOT Browser';
+
 // Global reference to mainWindow to prevent garbage collection
 let mainWindow: BrowserWindow | null = null;
 
 // Create the main window
 function createMainWindow() {
-  // Resolve dev icon for Windows/Linux from project assets
-  const devIconPath = path.join(process.cwd(), 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+  // Resolve dev icon for Windows/Linux from project assets (match packaged icon names)
+  const iconFileName = process.platform === 'win32' ? 'espot-logo.ico' : 'icon.png';
+  const devIconPath = path.join(process.cwd(), 'assets', iconFileName);
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -43,7 +47,7 @@ function createMainWindow() {
   });
 
   // Set window title
-  mainWindow.setTitle('ESPOT Browser');
+  mainWindow.setTitle(APP_NAME);
 
   // Add listeners to catch renderer process errors
   mainWindow.webContents.on('crashed', () => {

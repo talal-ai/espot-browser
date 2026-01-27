@@ -214,6 +214,18 @@ async def login(request: LoginRequest, http_request: Request):
                 detail="Account is not active. Please contact administrator."
             )
         
+        # Check device limit before creating new session (skip for admins)
+        user_role = user.get("role", "user")
+        if user_role != "admin":
+            max_devices = user.get("max_devices", 1) or 1  # Default to 1 if NULL
+            active_session_count = await supabase_service.count_user_active_sessions(user["id"])
+            
+            if active_session_count >= max_devices:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Device limit exceeded. You can only be logged in on {max_devices} device(s). Please log out from another device."
+                )
+        
         token = create_access_token(
             subject=user["id"],
             claims={

@@ -4,7 +4,7 @@
 
 import { apiService } from './api.service';
 import { API_ENDPOINTS } from '../config/api.config';
-import type { SystemStats, HealthStatus, ApiResponse } from '../types/api.types';
+import type { SystemStats, HealthStatus, DashboardCharts, ApiResponse } from '../types/api.types';
 
 class SystemService {
   /**
@@ -12,6 +12,13 @@ class SystemService {
    */
   async getStats(): Promise<ApiResponse<SystemStats>> {
     return apiService.get<SystemStats>(API_ENDPOINTS.system.stats);
+  }
+
+  /**
+   * Get dashboard charts and activity
+   */
+  async getDashboardCharts(): Promise<ApiResponse<DashboardCharts>> {
+    return apiService.get<DashboardCharts>(API_ENDPOINTS.system.metrics);
   }
 
   /**

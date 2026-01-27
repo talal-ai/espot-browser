@@ -70,6 +70,19 @@ const api = {
     launch: (launchData: { serviceId: string; url: string; username: string; password: string }) =>
       ipcRenderer.invoke('service:launch', launchData),
   },
+
+  // Auto-Update API
+  updates: {
+    check: () => ipcRenderer.invoke('updates:check'),
+    download: () => ipcRenderer.invoke('updates:download'),
+    install: () => ipcRenderer.invoke('updates:install'),
+    getStatus: () => ipcRenderer.invoke('updates:getStatus'),
+    onStatusChange: (callback: (status: any) => void) => {
+      const handler = (_event: any, status: any) => callback(status);
+      ipcRenderer.on('update-status', handler);
+      return () => ipcRenderer.removeListener('update-status', handler);
+    },
+  },
 };
 
 // Expose the API to the renderer process
@@ -125,5 +138,20 @@ export interface ElectronAPI {
   service: {
     launch: (launchData: { serviceId: string; url: string; username: string; password: string }) =>
       Promise<{ success: boolean; message?: string; error?: string }>;
+  };
+
+  updates: {
+    check: () => Promise<{ success: boolean; error?: string }>;
+    download: () => Promise<{ success: boolean; error?: string }>;
+    install: () => Promise<{ success: boolean; error?: string }>;
+    getStatus: () => Promise<{
+      checking: boolean;
+      available: boolean;
+      downloaded: boolean;
+      progress: number;
+      version: string | null;
+      error: string | null;
+    }>;
+    onStatusChange: (callback: (status: any) => void) => () => void;
   };
 }

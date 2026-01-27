@@ -5,7 +5,7 @@
   "main": "dist-electron/main.js",
   "homepage": "./",
   "scripts": {
-    "start": "node start-dev.js",
+    "start": "electron-forge start",
     "dev": "concurrently \"node build-electron.js --watch\" \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "dev:web": "vite",
     "build": "node build-electron.js && vite build",
@@ -16,7 +16,9 @@
     "dist:win": "npm run build && electron-builder --win",
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:linux": "npm run build && electron-builder --linux",
-    "generate:icons": "node scripts/generate-icons.js"
+    "generate:icons": "node scripts/generate-icons.js",
+    "package": "electron-forge package",
+    "make": "electron-forge make"
   },
   "keywords": [
     "electron",
@@ -25,7 +27,7 @@
     "spoofing",
     "desktop"
   ],
-  "author": "ESPOT Browser Team",
+  "author": "ESPOT Solutions",
   "license": "MIT",
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -72,6 +74,8 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "daisyui": "^5.4.2",
+    "electron-squirrel-startup": "^1.0.1",
+    "electron-updater": "^6.7.3",
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.23.24",
     "hugeicons-react": "^0.3.0",
@@ -89,6 +93,14 @@
     "vaul": "^1.1.2"
   },
   "devDependencies": {
+    "@electron-forge/cli": "^7.11.1",
+    "@electron-forge/maker-deb": "^7.11.1",
+    "@electron-forge/maker-rpm": "^7.11.1",
+    "@electron-forge/maker-squirrel": "^7.11.1",
+    "@electron-forge/maker-zip": "^7.11.1",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
+    "@electron-forge/plugin-fuses": "^7.11.1",
+    "@electron/fuses": "^1.8.0",
     "@types/chrome-remote-interface": "^0.33.0",
     "@types/node": "^20.19.24",
     "@types/react": "^18.3.26",
@@ -99,7 +111,7 @@
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
     "electron": "^28.3.3",
-    "electron-builder": "^24.13.3",
+    "electron-builder": "^26.5.0",
     "esbuild": "^0.25.11",
     "icon-gen": "^2.0.0",
     "postcss": "^8.4.47",
@@ -115,7 +127,16 @@
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "talal-ai",
+        "repo": "espot-browser",
+        "releaseType": "release"
+      }
+    ],
     "files": [
+      "assets/**/*",
       "dist/**/*",
       "dist-electron/**/*",
       "!node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
@@ -139,16 +160,21 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
-      "icon": "assets/icon.ico",
+      "icon": "assets/espot-logo.ico",
       "signAndEditExecutable": false,
-      "artifactName": "${productName}-${version}-${arch}-Setup.${ext}"
+      "artifactName": "${productName}-${version}-${arch}-Setup.${ext}",
+      "compression": "normal"
     },
     "nsis": {
       "oneClick": false,
@@ -158,10 +184,10 @@
       "runAfterFinish": true,
       "perMachine": false,
       "deleteAppDataOnUninstall": false,
-      "installerIcon": "assets/icon.ico",
-      "uninstallerIcon": "assets/icon.ico",
-      "installerHeader": "assets/icon.ico",
-      "installerHeaderIcon": "assets/icon.ico",
+      "installerIcon": "assets/espot-logo.ico",
+      "uninstallerIcon": "assets/espot-logo.ico",
+      "installerHeader": "assets/espot-logo.ico",
+      "installerHeaderIcon": "assets/espot-logo.ico",
       "license": "../LICENSE"
     },
     "portable": {
@@ -171,11 +197,17 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "assets/icon.icns",
@@ -205,11 +237,15 @@
       "target": [
         {
           "target": "AppImage",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "deb",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/icon.png",

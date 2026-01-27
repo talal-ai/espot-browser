@@ -15,6 +15,7 @@ const Dashboard = () => {
   const { sessions, loading: sessionsLoading } = useSessions();
   const { proxies, loading: proxiesLoading } = useProxies();
   const [stats, setStats] = useState(null);
+  const [chartsData, setChartsData] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [now, setNow] = useState(new Date());
 
@@ -25,9 +26,16 @@ const Dashboard = () => {
     const loadStats = async () => {
       try {
         setStatsLoading(true);
-        const response = await systemService.getStats();
-        if (response.success) {
-          setStats(response.data);
+        const [statsResponse, chartsResponse] = await Promise.all([
+          systemService.getStats(),
+          systemService.getDashboardCharts()
+        ]);
+        
+        if (statsResponse.success) {
+          setStats(statsResponse.data);
+        }
+        if (chartsResponse.success) {
+          setChartsData(chartsResponse.data);
         }
       } catch (error) {
         console.error('Failed to load stats:', error);
@@ -49,37 +57,11 @@ const Dashboard = () => {
   const activeProxies = proxies.filter(p => p.status === 'active').length;
 
   // Chart data
-  const userActivityData = [
-    { name: 'Mon', value: 45 },
-    { name: 'Tue', value: 52 },
-    { name: 'Wed', value: 48 },
-    { name: 'Thu', value: 61 },
-    { name: 'Fri', value: 55 },
-    { name: 'Sat', value: 32 },
-    { name: 'Sun', value: 28 }
-  ];
-
-  const sessionTrendsData = [
-    { name: 'Week 1', value: 120 },
-    { name: 'Week 2', value: 145 },
-    { name: 'Week 3', value: 138 },
-    { name: 'Week 4', value: 165 }
-  ];
-
-  const serviceUsageData = [
-    { name: 'Gmail', value: 35 },
-    { name: 'Salesforce', value: 25 },
-    { name: 'Slack', value: 20 },
-    { name: 'Zendesk', value: 15 },
-    { name: 'Others', value: 5 }
-  ];
-
-  const recentActivity = [
-    { user: 'John Doe', action: 'Logged in from Chrome - Windows', time: '2 min ago', type: 'login' },
-    { user: 'Jane Smith', action: 'Assigned to US East Proxy', time: '15 min ago', type: 'proxy' },
-    { user: 'Mike Johnson', action: 'Access to Gmail granted', time: '1 hour ago', type: 'service' },
-    { user: 'Sarah Williams', action: 'Session terminated on Safari', time: '2 hours ago', type: 'logout' }
-  ];
+  // Chart data
+  const userActivityData = chartsData?.user_activity || [];
+  const sessionTrendsData = chartsData?.session_trends || [];
+  const serviceUsageData = chartsData?.service_usage || [];
+  const recentActivity = chartsData?.recent_activity || [];
 
   if (loading) {
     return <PageSkeleton mode="dashboard" />;
@@ -88,9 +70,16 @@ const Dashboard = () => {
   const refreshStats = async () => {
     setStatsLoading(true);
     try {
-      const response = await systemService.getStats();
-      if (response.success) {
-        setStats(response.data);
+      const [statsResponse, chartsResponse] = await Promise.all([
+        systemService.getStats(),
+        systemService.getDashboardCharts()
+      ]);
+
+      if (statsResponse.success) {
+        setStats(statsResponse.data);
+      }
+      if (chartsResponse.success) {
+        setChartsData(chartsResponse.data);
       }
     } catch (error) {
       console.error('Failed to refresh stats:', error);

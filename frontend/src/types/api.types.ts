@@ -310,6 +310,25 @@ export interface HealthStatus {
   system_load?: number;
 }
 
+export interface ChartDataPoint {
+  name: string;
+  value: number;
+}
+
+export interface ActivityItem {
+  user: string;
+  action: string;
+  time: string;
+  type: string;
+}
+
+export interface DashboardCharts {
+  user_activity: ChartDataPoint[];
+  session_trends: ChartDataPoint[];
+  service_usage: ChartDataPoint[];
+  recent_activity: ActivityItem[];
+}
+
 // API Response Types
 export interface ApiSuccessResponse<T = any> {
   success: true;

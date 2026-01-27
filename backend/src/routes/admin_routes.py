@@ -15,7 +15,8 @@ from src.models.database import (
     Proxy, ProxyCreate, ProxyUpdate, ProxyWithAssignment,
     FingerprintProfile, FingerprintProfileCreate, FingerprintProfileUpdate,
     SystemStats, HealthStatus, Service, ServiceCreate, ServiceUpdate, ServiceWithAssignment,
-    ServiceCreateWithCredential, CredentialUpdate, LaunchCredentials
+    ServiceCreateWithCredential, CredentialUpdate, LaunchCredentials,
+    DashboardCharts
 )
 
 # Request models
@@ -81,6 +82,16 @@ async def get_user_services(user_id: str, admin=Depends(get_current_admin)):
         logger.error(f"Error getting user services: {e}")
         raise HTTPException(status_code=500, detail="Failed to get user services")
 
+@router.get("/services/{service_id}/users", response_model=List[dict])
+async def get_service_users(service_id: str, admin=Depends(get_current_admin)):
+    """Get all users assigned to a specific service"""
+    try:
+        users = await supabase_service.get_service_users(service_id)
+        return users
+    except Exception as e:
+        logger.error(f"Error getting service users: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get service users")
+
 @router.post("/users/{user_id}/services/{service_id}/assign")
 async def assign_service_to_user(user_id: str, service_id: str, admin=Depends(get_current_admin)):
     try:
@@ -110,6 +121,40 @@ async def unassign_service_from_user(user_id: str, service_id: str, admin=Depend
     except Exception as e:
         logger.error(f"Error unassigning service from user: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to unassign service")
+
+# Device Management Endpoints
+@router.get("/users/{user_id}/devices")
+async def get_user_devices(user_id: str, admin=Depends(get_current_admin)):
+    """Get all active devices/sessions for a user"""
+    try:
+        sessions = await supabase_service.get_user_active_sessions(user_id)
+        # Get user's max_devices setting
+        user = await supabase_service.get_user(user_id)
+        max_devices = user.max_devices if user else 1
+        return {
+            "max_devices": max_devices,
+            "active_count": len(sessions),
+            "devices": sessions
+        }
+    except Exception as e:
+        logger.error(f"Error getting user devices: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get user devices")
+
+@router.delete("/users/{user_id}/devices/{session_id}")
+async def terminate_user_device(user_id: str, session_id: str, admin=Depends(get_current_admin)):
+    """Force logout a specific device/session for a user"""
+    try:
+        success = await supabase_service.terminate_user_session(session_id)
+        if success:
+            logger.info(f"Admin terminated session {session_id} for user {user_id}")
+            return {"success": True, "message": "Device logged out successfully"}
+        raise HTTPException(status_code=404, detail="Session not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error terminating user session: {e}")
+        raise HTTPException(status_code=500, detail="Failed to terminate session")
+
 
 @router.get("/users/{user_id}/fingerprints", response_model=List[dict])
 async def get_user_fingerprint_profiles(user_id: str, admin=Depends(get_current_admin)):
@@ -762,6 +807,20 @@ async def get_system_stats(admin=Depends(get_current_admin)):
     except Exception as e:
         logger.error(f"Error getting system stats: {e}")
         raise HTTPException(status_code=500, detail="Failed to get system stats")
+
+    except Exception as e:
+        logger.error(f"Error getting system stats: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get system stats")
+
+@router.get("/metrics", response_model=DashboardCharts)
+async def get_dashboard_metrics(admin=Depends(get_current_admin)):
+    """Get dashboard charts data"""
+    try:
+        charts = await supabase_service.get_dashboard_charts()
+        return charts
+    except Exception as e:
+        logger.error(f"Error getting dashboard metrics: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get dashboard metrics")
 
 @router.get("/health", response_model=HealthStatus)
 async def get_health_status(admin=Depends(get_current_admin)):

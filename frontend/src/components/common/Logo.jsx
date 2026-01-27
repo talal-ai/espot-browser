@@ -1,25 +1,20 @@
 import React from 'react';
+import brandLogo from '../../../assets/icon.png';
 
 // Logo component centralizes logo usage across the app to keep it consistent.
-// It loads from the public folder so Vite serves it at runtime.
-// Prefer SVG for crisp scaling; fallback to PNG if needed.
+// It loads from the shared branded asset pack so production builds always show ESPOT art.
 export function Logo({ size = 40, className = '', alt = 'ESPOT Browser' }) {
-  // Use SVG where possible; ensure asset exists in /public
-  const svgSrc = '/icon0.svg';
-  const pngSrc = '/icon1.png';
-
   return (
     <div className={`relative flex items-center justify-center ${className}`} style={{ width: size, height: size }}>
-      {/* Try SVG first; fallback PNG via <img> onError */}
       <img
-        src={svgSrc}
+        src={brandLogo}
         alt={alt}
         width={size}
         height={size}
         className="select-none"
         onError={(e) => {
-          // Fallback to PNG if SVG fails
-          e.currentTarget.src = pngSrc;
+          // Fallback to the shipped SVG in public if the PNG fails to load
+          e.currentTarget.src = '/icon0.svg';
         }}
       />
     </div>

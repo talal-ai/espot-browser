@@ -3,8 +3,12 @@
  * Central configuration for API endpoints and settings
  */
 
+const defaultBaseUrl = import.meta.env.MODE === 'production'
+  ? 'https://espot-browser.onrender.com'
+  : 'http://localhost:8000';
+
 export const API_CONFIG = {
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
+  baseURL: import.meta.env.VITE_API_BASE_URL || defaultBaseUrl,
   timeout: parseInt(import.meta.env.VITE_API_TIMEOUT || '30000'),
   enableMockData: import.meta.env.VITE_ENABLE_MOCK_DATA === 'true',
   enableDevTools: import.meta.env.VITE_ENABLE_DEV_TOOLS === 'true',
@@ -115,6 +119,7 @@ export const API_ENDPOINTS = {
   // System
   system: {
     stats: '/api/admin/stats',
+    metrics: '/api/admin/metrics',
     health: '/api/admin/health',
   },
 };
