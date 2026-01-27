@@ -162,14 +162,38 @@ export const authService = {
 
     /**
      * Sign out the current user
+     * Optimized for instant UI response - clears local state first,
+     * then does network calls in background (fire-and-forget)
      */
     async logout() {
         console.log('[AuthService] Signing out...');
-        const { error } = await supabase.auth.signOut();
-
-        if (error) {
-            console.error('[AuthService] Logout error:', error);
-            throw error;
+        
+        // 1. Clear local storage IMMEDIATELY for instant UI response
+        const token = localStorage.getItem("auth_token");
+        localStorage.removeItem("auth_token");
+        
+        // 2. Sign out from Supabase FIRST (faster, local-ish operation)
+        try {
+            await supabase.auth.signOut();
+            console.log('[AuthService] Supabase signout complete');
+        } catch (err) {
+            console.error('[AuthService] Supabase signout error:', err);
+            // Continue anyway - local storage is already cleared
+        }
+        
+        // 3. Backend logout in background (fire-and-forget, don't block UI)
+        if (token) {
+            fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/logout`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+            }).then(() => {
+                console.log('[AuthService] Backend session terminated');
+            }).catch((err) => {
+                console.error('[AuthService] Backend logout failed:', err);
+            });
         }
 
         console.log('[AuthService] Signed out successfully');

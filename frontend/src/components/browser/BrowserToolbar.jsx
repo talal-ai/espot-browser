@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     ArrowLeft, ArrowRight, RotateCw, Lock, Search,
-    ShieldCheck, Star, Menu
+    ShieldCheck, Star
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -128,10 +128,6 @@ const BrowserToolbar = ({
             <div className="flex items-center gap-2">
                 {/* Visual separator/spacer if needed */}
                 <div className="w-px h-6 bg-gray-200 dark:bg-gray-800 mx-1 hidden sm:block"></div>
-
-                <Button variant="ghost" size="icon" className="w-8 h-8 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800">
-                    <Menu className="w-4 h-4" />
-                </Button>
             </div>
         </div>
     );

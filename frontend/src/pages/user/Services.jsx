@@ -248,11 +248,36 @@ const UserServices = () => {
                     </div>
                   </div>
 
-                  <div className="p-3 rounded-lg bg-gray-50/80 dark:bg-gray-800/50 mb-4">
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Category</div>
-                    <Badge variant="outline" className="text-xs">
-                      {s.category || 'Service'}
-                    </Badge>
+                  <div className="space-y-2 mb-4">
+                    <div className="p-3 rounded-lg bg-gray-50/80 dark:bg-gray-800/50 flex justify-between items-center">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Category</div>
+                      <Badge variant="outline" className="text-xs">
+                        {s.category || 'Service'}
+                      </Badge>
+                    </div>
+                    {s.expires_at && (
+                      <div className={`p-3 rounded-lg flex justify-between items-center ${
+                        (() => {
+                          const days = Math.ceil((new Date(s.expires_at) - new Date()) / (1000 * 60 * 60 * 24));
+                          return days <= 3 ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' : 'bg-gray-50/80 dark:bg-gray-800/50';
+                        })()
+                      }`}>
+                        <div className={`text-xs ${
+                          (() => {
+                            const days = Math.ceil((new Date(s.expires_at) - new Date()) / (1000 * 60 * 60 * 24));
+                            return days <= 3 ? 'text-red-600 dark:text-red-400 font-medium' : 'text-gray-500 dark:text-gray-400';
+                          })()
+                        }`}>Expires</div>
+                        <div className={`text-xs font-medium ${
+                           (() => {
+                            const days = Math.ceil((new Date(s.expires_at) - new Date()) / (1000 * 60 * 60 * 24));
+                            return days <= 3 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white';
+                          })()
+                        }`}>
+                          {new Date(s.expires_at).toLocaleDateString()}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <Button

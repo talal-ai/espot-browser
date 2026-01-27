@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { Sun, Moon, Bell, Search, LogOut, User, Mail } from 'lucide-react';
+import { Sun, Moon, Search, LogOut, User, Mail } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import {
@@ -84,14 +84,7 @@ const Header = () => {
             </Button>
           )}
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative hover:bg-gray-100 dark:hover:bg-gray-800"
-          >
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-orange-500 rounded-full"></span>
-          </Button>
+
 
           {/* User Menu */}
           <DropdownMenu>
@@ -112,7 +105,7 @@ const Header = () => {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => navigate('/settings')}>
+              <DropdownMenuItem onClick={() => navigate(user?.role === 'admin' ? '/admin/settings' : '/user/settings')}>
                 <User className="mr-2 h-4 w-4" />
                 Profile Settings
               </DropdownMenuItem>

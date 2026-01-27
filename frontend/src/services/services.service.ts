@@ -68,8 +68,10 @@ class ServicesService {
     return apiService.get<any[]>(`/api/admin/services/${serviceId}/users`); // Manually constructing path as it might not be in API_ENDPOINTS yet
   }
 
-  async assignServiceToUser(serviceId: string, userId: string, assignedBy?: string): Promise<ApiResponse<UserService>> {
-    return apiService.post<UserService>(API_ENDPOINTS.services.assignToUser(userId, serviceId), { assigned_by: assignedBy });
+  async assignServiceToUser(serviceId: string, userId: string, assignedBy?: string, durationDays?: number): Promise<ApiResponse<UserService>> {
+    const payload: any = { assigned_by: assignedBy };
+    if (durationDays) payload.duration_days = durationDays;
+    return apiService.post<UserService>(API_ENDPOINTS.services.assignToUser(userId, serviceId), payload);
   }
 
   async unassignServiceFromUser(serviceId: string, userId: string): Promise<ApiResponse<void>> {

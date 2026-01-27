@@ -32,6 +32,7 @@ const Users = () => {
   const [availableServices, setAvailableServices] = useState([]);
   const [assignedServices, setAssignedServices] = useState([]);
   const [selectedServiceId, setSelectedServiceId] = useState('');
+  const [assignmentDuration, setAssignmentDuration] = useState('30'); // Default 30 days
   const [activeTab, setActiveTab] = useState('details');
   const [servicesPage, setServicesPage] = useState(1);
   const pageSize = 10;
@@ -448,11 +449,21 @@ const Users = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Assign New Service</Label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                       <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
                         <SelectTrigger><SelectValue placeholder="Select a service" /></SelectTrigger>
                         <SelectContent>
                           {unassignedServices.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={assignmentDuration} onValueChange={setAssignmentDuration}>
+                        <SelectTrigger><SelectValue placeholder="Duration" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="7">7 Days</SelectItem>
+                          <SelectItem value="15">15 Days</SelectItem>
+                          <SelectItem value="30">30 Days</SelectItem>
+                          <SelectItem value="90">90 Days</SelectItem>
+                          <SelectItem value="365">1 Year</SelectItem>
                         </SelectContent>
                       </Select>
                       <Button
@@ -462,7 +473,12 @@ const Users = () => {
                           setAssigning(true);
                           const selected = availableServices.find((s) => s.id === selectedServiceId);
                           try {
-                            const result = await servicesService.assignServiceToUser(selectedServiceId, editingUser.id);
+                            const result = await servicesService.assignServiceToUser(
+                              selectedServiceId, 
+                              editingUser.id, 
+                              undefined, // assignedBy
+                              parseInt(assignmentDuration) // durationDays
+                            );
                             if (result.success) {
                               const t = toast({ title: 'Service assigned', description: selected ? `${selected.name} assigned to ${editingUser.username || editingUser.email}` : 'Assigned' });
                               setTimeout(() => t.dismiss(), 5000);

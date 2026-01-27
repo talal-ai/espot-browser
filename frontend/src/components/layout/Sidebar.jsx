@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, Wifi, Monitor, Key, AppWindow, Activity, Settings, MessageCircle, Fingerprint, Shield, ShieldOff } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Users, Wifi, Monitor, Key, AppWindow, Activity, Settings, MessageCircle, Fingerprint, Shield, ShieldOff, LogOut, User } from 'lucide-react';
 import Logo from '../common/Logo';
 import { useAuth } from '../../contexts/AuthContext';
 import { useChatNotifications } from '../../hooks/use-chat-notifications';
 import { proxiesService } from '../../services/proxies.service';
+import { Button } from '../ui/button';
 
 const Sidebar = () => {
   const location = useLocation();
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const isAdmin = !!(user && user.role === 'admin');
   const { unreadCount, clearNotifications } = useChatNotifications();
   
@@ -43,12 +45,12 @@ const Sidebar = () => {
     ? [
       { icon: LayoutDashboard, label: 'Dashboard', path: '/admin' },
       { icon: Users, label: 'Users', path: '/admin/users' },
+      { icon: Users, label: 'Groups', path: '/admin/groups' },
+      { icon: AppWindow, label: 'Services', path: '/admin/services' },
+      { icon: Key, label: 'Credentials', path: '/admin/credentials' },
       { icon: Wifi, label: 'Proxies', path: '/admin/proxies' },
       { icon: Fingerprint, label: 'Fingerprints', path: '/admin/fingerprints' },
       { icon: Monitor, label: 'Sessions', path: '/admin/sessions' },
-      { icon: Key, label: 'Credentials', path: '/admin/credentials' },
-      { icon: AppWindow, label: 'Services', path: '/admin/services' },
-      { icon: Users, label: 'Groups', path: '/admin/groups' },
       { icon: MessageCircle, label: 'Conversations', path: '/admin/conversations' },
       { icon: Settings, label: 'Settings', path: '/admin/settings' }
     ]
@@ -85,9 +87,9 @@ const Sidebar = () => {
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/20">
                 <Shield className="w-4 h-4 text-green-500 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-green-600 dark:text-green-400">Protected</p>
+                  <p className="text-xs font-medium text-green-600 dark:text-green-400">Secure Connection</p>
                   <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
-                    {proxyStatus.proxy.host}:{proxyStatus.proxy.port}
+                    {proxyStatus.proxy.country} • Protected
                   </p>
                 </div>
               </div>
@@ -95,8 +97,8 @@ const Sidebar = () => {
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
                 <ShieldOff className="w-4 h-4 text-gray-400 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400">No Proxy</p>
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500">Direct connection</p>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Standard Network</p>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500">Unprotected</p>
                 </div>
               </div>
             )}
@@ -134,11 +136,55 @@ const Sidebar = () => {
           })}
         </nav>
 
-        {/* Footer */}
-        <div className="p-4">
-          <div className="backdrop-blur-md bg-gradient-to-r from-blue-500/10 to-orange-500/10 rounded-lg p-4 border border-blue-500/20">
-            <p className="text-sm font-medium text-gray-900 dark:text-white">{isAdmin ? 'Admin Account' : 'User Account'}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{user?.email || ''}</p>
+        {/* Footer - Compact User Profile & Logout */}
+        <div className="p-3">
+          <div className="relative overflow-hidden rounded-lg bg-gray-100 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700/50">
+            {/* Gradient accent bar */}
+            <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500" />
+            
+            <div className="p-3 pt-3.5">
+              {/* User info row with logout */}
+              <div className="flex items-center gap-2.5">
+                {/* Avatar */}
+                <div className="relative flex-shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow">
+                    <User className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-gray-100 dark:border-slate-800" />
+                </div>
+                
+                {/* User details */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs font-semibold text-gray-900 dark:text-white truncate">
+                      {user?.username || user?.email?.split('@')[0] || 'User'}
+                    </p>
+                    <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase rounded ${
+                      isAdmin 
+                        ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400' 
+                        : 'bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                    }`}>
+                      {isAdmin ? 'Admin' : 'User'}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-gray-500 dark:text-slate-400 truncate">
+                    {user?.email || ''}
+                  </p>
+                </div>
+
+                {/* Logout Button */}
+                <button
+                  onClick={() => {
+                    logout();
+                    navigate('/auth');
+                  }}
+                  className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

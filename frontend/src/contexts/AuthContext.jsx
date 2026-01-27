@@ -249,25 +249,25 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
+    // Clear state IMMEDIATELY for instant UI response
+    const userId = user?.id;
+    setUser(null);
+    setIsAuthenticated(false);
+    localStorage.removeItem("auth_token");
+    try { sessionStorage.clear(); } catch { }
+
+    // Call auth service logout (also optimized for speed)
     try {
-      // Deactivate user's proxy in Electron before logout
-      if (user?.id && window.electronAPI?.proxy?.deactivateForUser) {
-        try {
-          await window.electronAPI.proxy.deactivateForUser(user.id);
-          console.log('✅ User proxy deactivated on logout');
-        } catch (err) {
-          console.error('Failed to deactivate proxy on logout:', err);
-        }
-      }
-      
       await authService.logout();
     } catch (error) {
       console.error("Logout error:", error);
-    } finally {
-      setUser(null);
-      setIsAuthenticated(false);
-      localStorage.removeItem("auth_token");
-      try { sessionStorage.clear(); } catch { }
+    }
+    
+    // Deactivate user's proxy in Electron in background (don't block navigation)
+    if (userId && window.electronAPI?.proxy?.deactivateForUser) {
+      window.electronAPI.proxy.deactivateForUser(userId)
+        .then(() => console.log('✅ User proxy deactivated on logout'))
+        .catch((err) => console.error('Failed to deactivate proxy on logout:', err));
     }
   };
 

@@ -123,7 +123,7 @@
   },
   "build": {
     "appId": "com.espot.browser",
-    "productName": "ESPOT Browser",
+    "productName": "Espot Browser",
     "directories": {
       "output": "release"
     },
@@ -157,6 +157,9 @@
       "node_modules/chrome-remote-interface/**/*"
     ],
     "win": {
+      "executableName": "Espot Browser",
+      "legalTrademarks": "Espot Solutions",
+      "publisherName": "Espot Solutions",
       "target": [
         {
           "target": "nsis",

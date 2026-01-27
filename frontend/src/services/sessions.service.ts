@@ -128,6 +128,13 @@ export const sessionsService = {
   async terminateAllSessions(): Promise<ApiResponse<{ count: number }>> {
     return apiService.post(API_ENDPOINTS.sessions.list + '/terminate-all');
   },
+
+  /**
+   * Delete ALL sessions (admin) - removes all session records
+   */
+  async deleteAllSessions(): Promise<ApiResponse<{ count: number }>> {
+    return apiService.post(API_ENDPOINTS.sessions.list + '/delete-all');
+  },
 };
 
 export default sessionsService;

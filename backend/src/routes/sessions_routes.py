@@ -184,3 +184,16 @@ async def terminate_all_sessions():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to terminate all sessions: {str(e)}"
         )
+
+
+@router.post("/delete-all", status_code=status.HTTP_200_OK)
+async def delete_all_sessions():
+    """Delete ALL session records from the database."""
+    try:
+        count = await supabase_service.delete_all_sessions()
+        return {"success": True, "message": f"Deleted {count} sessions", "count": count}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete all sessions: {str(e)}"
+        )

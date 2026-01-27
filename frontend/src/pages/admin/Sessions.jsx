@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Monitor, RefreshCw } from 'lucide-react';
+import { X, Monitor, RefreshCw, Trash2 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import DataTable from '../../components/common/DataTable';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
@@ -19,6 +19,7 @@ const Sessions = () => {
   const [terminateAllConfirmOpen, setTerminateAllConfirmOpen] = useState(false);
   const [sessionToEnd, setSessionToEnd] = useState(null);
   const [sessionToDelete, setSessionToDelete] = useState(null);
+  const [deleteAllConfirmOpen, setDeleteAllConfirmOpen] = useState(false);
 
   const handleEndSession = async (session) => {
     setSessionToEnd(session);
@@ -53,6 +54,19 @@ const Sessions = () => {
     if (sessionToDelete) {
       await deleteSession(sessionToDelete.id);
       setSessionToDelete(null);
+    }
+  };
+
+  const handleDeleteAll = () => {
+    setDeleteAllConfirmOpen(true);
+  };
+
+  const confirmDeleteAll = async () => {
+    try {
+      await sessionsService.deleteAllSessions();
+      refresh();
+    } catch (e) {
+      console.error('Failed to delete all sessions:', e);
     }
   };
 
@@ -263,6 +277,15 @@ const Sessions = () => {
         </div>
         <div className="flex gap-3">
           <Button
+            onClick={handleDeleteAll}
+            variant="outline"
+            size="sm"
+            className="gap-2 text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete All
+          </Button>
+          <Button
             onClick={handleTerminateAll}
             variant="destructive"
             size="sm"
@@ -344,6 +367,17 @@ const Sessions = () => {
         title="⚠️ Force Logout All Users?"
         description="This is a SYSTEM-WIDE action that will immediately disconnect ALL currently logged-in users. Every active session will be terminated. Are you absolutely sure you want to proceed?"
         confirmText="Force Logout All"
+        cancelText="Cancel"
+      />
+
+      {/* Delete All Sessions Confirmation */}
+      <ConfirmDialog
+        open={deleteAllConfirmOpen}
+        onOpenChange={setDeleteAllConfirmOpen}
+        onConfirm={confirmDeleteAll}
+        title="🗑️ Delete All Session Records?"
+        description="This will permanently delete ALL session records from the database. This includes both active and ended sessions. This action cannot be undone."
+        confirmText="Delete All"
         cancelText="Cancel"
       />
     </div>

@@ -4,6 +4,8 @@ User-facing routes for authenticated users (not admin-specific)
 from fastapi import APIRouter, HTTPException, Depends, status
 from typing import List
 import logging
+from datetime import datetime
+
 
 from ..services.supabase_service import supabase_service
 from ..services.encryption_service import encryption_service
@@ -55,6 +57,33 @@ async def get_service_launch_credentials(
                 status_code=403, 
                 detail="You don't have access to this service"
             )
+            
+        # Check for expiration
+        for svc in user_services:
+            sid = svc.get("id") or svc.get("service_id")
+            if sid == service_id:
+                expires_at = svc.get("expires_at")
+                if expires_at:
+                    # Parse if string
+                    if isinstance(expires_at, str):
+                        try:
+                            # Handle ISO format variations (e.g. with Z or +00:00)
+                            expires_at = expires_at.replace('Z', '+00:00')
+                            expires_dt = datetime.fromisoformat(expires_at)
+                        except ValueError:
+                            # Fallback or log error
+                            logger.error(f"Invalid date format for expires_at: {expires_at}")
+                            continue # Skip check if date is invalid? Or block?
+                    else:
+                        expires_dt = expires_at
+                        
+                    # Compare with UTC now
+                    if expires_dt and datetime.now(expires_dt.tzinfo) > expires_dt:
+                        raise HTTPException(
+                            status_code=403,
+                            detail="Service access has expired. Please contact admin to renew."
+                        )
+                break
         
         # Get service details
         service = await supabase_service.get_service(service_id)

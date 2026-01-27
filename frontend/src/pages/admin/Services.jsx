@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { Switch } from '../../components/ui/switch';
 import DataTable from '../../components/common/DataTable';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import { servicesService } from '../../services/services.service';
@@ -21,6 +22,7 @@ const Services = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [serviceToDelete, setServiceToDelete] = useState(null);
+  const [hasCredentials, setHasCredentials] = useState(true);
   const [formData, setFormData] = useState({
     name: '',
     url: '',
@@ -44,8 +46,16 @@ const Services = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Prepare data - clear credentials if disabled
+    const submissionData = { ...formData };
+    if (!hasCredentials) {
+        submissionData.username = '';
+        submissionData.password = '';
+    }
+
     if (editingService) {
-      const res = await servicesService.updateService(editingService.id, formData);
+      const res = await servicesService.updateService(editingService.id, submissionData);
       if (res.success) {
         toast({ title: 'Service updated successfully' });
         setIsDialogOpen(false);
@@ -53,7 +63,7 @@ const Services = () => {
         loadServices();
       }
     } else {
-      const res = await servicesService.createService({ ...formData });
+      const res = await servicesService.createService(submissionData);
       if (res.success) {
         toast({ title: 'Service created successfully' });
         setIsDialogOpen(false);
@@ -83,6 +93,9 @@ const Services = () => {
     setEditingService(service);
     // Load existing credential data if available
     const credential = service.credential || {};
+    const hasCreds = !!(credential.username);
+    setHasCredentials(hasCreds);
+    
     setFormData({
       name: service.name,
       url: service.url,
@@ -108,6 +121,7 @@ const Services = () => {
     });
     setEditingService(null);
     setShowPassword(false);
+    setHasCredentials(true);
   };
 
   const columns = [
@@ -236,61 +250,78 @@ const Services = () => {
                 </Select>
               </div>
 
+
               {/* Credential Section */}
               <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Key className="w-4 h-4 text-blue-500" />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Login Credentials</span>
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <Label htmlFor="username">Username / Email</Label>
-                    <Input
-                      id="username"
-                      value={formData.username}
-                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                      placeholder="user@example.com"
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Key className="w-4 h-4 text-blue-500" />
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Login Credentials</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="has-credentials" className="text-xs text-gray-500 cursor-pointer">
+                      {hasCredentials ? 'Enabled' : 'Disabled'}
+                    </Label>
+                    <Switch
+                      id="has-credentials"
+                      checked={hasCredentials}
+                      onCheckedChange={setHasCredentials}
                     />
                   </div>
+                </div>
 
-                  <div>
-                    <Label htmlFor="password">Password</Label>
-                    <div className="relative">
+                {hasCredentials && (
+                  <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div>
+                      <Label htmlFor="username">Username / Email</Label>
                       <Input
-                        id="password"
-                        type={showPassword ? 'text' : 'password'}
-                        value={formData.password}
-                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                        placeholder={editingService ? '(leave empty to keep existing)' : 'Enter password'}
-                        className="pr-10"
+                        id="username"
+                        value={formData.username}
+                        onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                        placeholder="user@example.com"
+                        required={hasCredentials}
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="password">Password</Label>
+                      <div className="relative">
+                        <Input
+                          id="password"
+                          type={showPassword ? 'text' : 'password'}
+                          value={formData.password}
+                          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                          placeholder={editingService ? '(leave empty to keep existing)' : 'Enter password'}
+                          className="pr-10"
+                          required={hasCredentials && !editingService}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="visibility">Credential Visibility</Label>
+                      <Select value={formData.visibility} onValueChange={(value) => setFormData({ ...formData, visibility: value })}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="hidden">Hidden from Users</SelectItem>
+                          <SelectItem value="visible">Visible to Users</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Hidden credentials will auto-fill without showing the password to users.
+                      </p>
                     </div>
                   </div>
-
-                  <div>
-                    <Label htmlFor="visibility">Credential Visibility</Label>
-                    <Select value={formData.visibility} onValueChange={(value) => setFormData({ ...formData, visibility: value })}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="hidden">Hidden from Users</SelectItem>
-                        <SelectItem value="visible">Visible to Users</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Hidden credentials will auto-fill without showing the password to users.
-                    </p>
-                  </div>
-                </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-3 pt-4">

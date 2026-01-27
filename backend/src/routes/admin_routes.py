@@ -5,6 +5,7 @@ Production-ready admin endpoints with proper authentication and validation
 
 from fastapi import APIRouter, HTTPException, Depends, status, Query
 from typing import List, Optional
+from datetime import datetime
 import logging
 import hashlib
 from pydantic import BaseModel
@@ -16,7 +17,8 @@ from src.models.database import (
     FingerprintProfile, FingerprintProfileCreate, FingerprintProfileUpdate,
     SystemStats, HealthStatus, Service, ServiceCreate, ServiceUpdate, ServiceWithAssignment,
     ServiceCreateWithCredential, CredentialUpdate, LaunchCredentials,
-    DashboardCharts
+    DashboardCharts,
+    Group, GroupCreate, GroupUpdate
 )
 
 # Request models
@@ -92,14 +94,37 @@ async def get_service_users(service_id: str, admin=Depends(get_current_admin)):
         logger.error(f"Error getting service users: {e}")
         raise HTTPException(status_code=500, detail="Failed to get service users")
 
+class AssignServiceRequest(BaseModel):
+    duration_days: Optional[int] = None
+    expires_at: Optional[datetime] = None
+
 @router.post("/users/{user_id}/services/{service_id}/assign")
-async def assign_service_to_user(user_id: str, service_id: str, admin=Depends(get_current_admin)):
+async def assign_service_to_user(
+    user_id: str, 
+    service_id: str, 
+    body: AssignServiceRequest = None,
+    admin=Depends(get_current_admin)
+):
     try:
         logger.info(f"Assigning service {service_id} to user {user_id}")
         logger.info(f"Service ID length: {len(service_id)}, User ID length: {len(user_id)}")
         admin_id = admin.get("user_id")
         admin_uuid = admin_id if isinstance(admin_id, str) and len(admin_id) == 36 else None
-        assigned = await supabase_service.assign_service_to_user(service_id, user_id, assigned_by=admin_uuid)
+        
+        expires_at = None
+        if body:
+            if body.duration_days:
+                from datetime import datetime, timedelta
+                expires_at = datetime.utcnow() + timedelta(days=body.duration_days)
+            elif body.expires_at:
+                expires_at = body.expires_at
+
+        assigned = await supabase_service.assign_service_to_user(
+            service_id, 
+            user_id, 
+            assigned_by=admin_uuid, 
+            expires_at=expires_at
+        )
         logger.info(f"Successfully assigned service to user")
         return assigned
     except Exception as e:
@@ -831,3 +856,100 @@ async def get_health_status(admin=Depends(get_current_admin)):
     except Exception as e:
         logger.error(f"Error getting health status: {e}")
         raise HTTPException(status_code=500, detail="Failed to get health status")
+
+# ============================================================================
+# GROUP MANAGEMENT ENDPOINTS
+# ============================================================================
+
+class AddUserToGroupRequest(BaseModel):
+    user_id: str
+
+@router.get("/groups", response_model=List[Group])
+async def get_groups(admin=Depends(get_current_admin)):
+    """Get all user groups"""
+    try:
+        groups = await supabase_service.get_groups()
+        return groups
+    except Exception as e:
+        logger.error(f"Error getting groups: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get groups")
+
+@router.post("/groups", response_model=Group, status_code=status.HTTP_201_CREATED)
+async def create_group(group_data: GroupCreate, admin=Depends(get_current_admin)):
+    """Create a new group"""
+    try:
+        group = await supabase_service.create_group(group_data)
+        logger.info(f"Group created: {group.id}")
+        return group
+    except Exception as e:
+        logger.error(f"Error creating group: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create group")
+
+@router.get("/groups/{group_id}", response_model=Group)
+async def get_group(group_id: str, admin=Depends(get_current_admin)):
+    """Get a specific group"""
+    try:
+        group = await supabase_service.get_group(group_id)
+        if not group:
+            raise HTTPException(status_code=404, detail="Group not found")
+        return group
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting group {group_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get group")
+
+@router.put("/groups/{group_id}", response_model=Group)
+async def update_group(group_id: str, group_data: GroupUpdate, admin=Depends(get_current_admin)):
+    """Update a group"""
+    try:
+        group = await supabase_service.update_group(group_id, group_data)
+        if not group:
+            raise HTTPException(status_code=404, detail="Group not found")
+        return group
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating group {group_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update group")
+
+@router.delete("/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_group(group_id: str, admin=Depends(get_current_admin)):
+    """Delete a group"""
+    try:
+        await supabase_service.delete_group(group_id)
+        logger.info(f"Group deleted: {group_id}")
+    except Exception as e:
+        logger.error(f"Error deleting group {group_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete group")
+
+@router.get("/groups/{group_id}/users")
+async def get_group_users(group_id: str, admin=Depends(get_current_admin)):
+    """Get all users in a group"""
+    try:
+        users = await supabase_service.get_group_users(group_id)
+        return users
+    except Exception as e:
+        logger.error(f"Error getting group users {group_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get group users")
+
+@router.post("/groups/{group_id}/users", status_code=status.HTTP_201_CREATED)
+async def add_user_to_group(group_id: str, body: AddUserToGroupRequest, admin=Depends(get_current_admin)):
+    """Add a user to a group"""
+    try:
+        await supabase_service.add_user_to_group(group_id, body.user_id)
+        logger.info(f"User {body.user_id} added to group {group_id}")
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"Error adding user to group: {e}")
+        raise HTTPException(status_code=500, detail="Failed to add user to group")
+
+@router.delete("/groups/{group_id}/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_user_from_group(group_id: str, user_id: str, admin=Depends(get_current_admin)):
+    """Remove a user from a group"""
+    try:
+        await supabase_service.remove_user_from_group(group_id, user_id)
+        logger.info(f"User {user_id} removed from group {group_id}")
+    except Exception as e:
+        logger.error(f"Error removing user from group: {e}")
+        raise HTTPException(status_code=500, detail="Failed to remove user from group")

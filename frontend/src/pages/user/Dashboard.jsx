@@ -153,7 +153,7 @@ const UserDashboard = () => {
                     console.log('✅ User proxy activated in Electron:', result);
                     toast({
                       title: '🛡️ Proxy Protection Active',
-                      description: `Your traffic is now routed through ${defaultProxy.host}:${defaultProxy.port}`,
+                      description: `Your traffic is now routed through ${defaultProxy.country || 'Secure Location'}`,
                       duration: 4000
                     });
                   } else {
@@ -397,8 +397,8 @@ const UserDashboard = () => {
             <div className="flex items-center gap-3 mb-4">
               <Shield className="w-6 h-6 text-green-500" />
               <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Proxy Protection</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Your assigned proxy connections</p>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Network Status</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Your secure network connection</p>
               </div>
               <div className="ml-auto flex items-center gap-2">
                 <Button
@@ -409,14 +409,14 @@ const UserDashboard = () => {
                     if (window.electronAPI?.window?.openUrl) {
                       window.electronAPI.window.openUrl('https://api.ipify.org?format=json', user?.id);
                       toast({
-                        title: '🔍 Testing Proxy',
-                        description: 'Opening IP check page - should show proxy IP, not your real IP',
+                        title: '🔍 Testing Connection',
+                        description: 'Opening IP check page...',
                       });
                     } else if (window.electron?.window?.openUrl) {
                       window.electron.window.openUrl('https://api.ipify.org?format=json', user?.id);
                       toast({
-                        title: '🔍 Testing Proxy',
-                        description: 'Opening IP check page - should show proxy IP, not your real IP',
+                        title: '🔍 Testing Connection',
+                        description: 'Opening IP check page...',
                       });
                     } else {
                       window.open('https://api.ipify.org?format=json', '_blank');
@@ -425,9 +425,9 @@ const UserDashboard = () => {
                   className="gap-2"
                 >
                   <Globe className="w-4 h-4" />
-                  Test Proxy
+                  Test Connection
                 </Button>
-                <Badge className="bg-green-500 text-white">Protected</Badge>
+                <Badge className="bg-green-500 text-white">Secured</Badge>
               </div>
             </div>
             <div className="space-y-3">
@@ -437,7 +437,7 @@ const UserDashboard = () => {
                     <div className={`w-2 h-2 rounded-full ${proxy.status === 'active' ? 'bg-green-500' : 'bg-yellow-500'}`} />
                     <div>
                       <div className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
-                        <span>{proxy.host}:{proxy.port}</span>
+                        <span>Secure Node</span>
                         {proxy.is_default && <Badge className="bg-blue-500 text-white text-[10px]">Default</Badge>}
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -653,11 +653,44 @@ const UserDashboard = () => {
                       </div>
                     </div>
 
-                    <div className="p-3 rounded-lg bg-gray-50/80 dark:bg-gray-800/50 mb-4">
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Category</div>
-                      <Badge variant="outline" className="text-xs">
-                        {s.category || 'Service'}
-                      </Badge>
+                    <div className="space-y-2 mb-4">
+                      <div className="p-3 rounded-lg bg-gray-50/80 dark:bg-gray-800/50 flex justify-between items-center">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">Category</div>
+                        <Badge variant="outline" className="text-xs">
+                          {s.category || 'Service'}
+                        </Badge>
+                      </div>
+                      {s.assigned_at && (
+                        <div className="p-3 rounded-lg bg-gray-50/80 dark:bg-gray-800/50 flex justify-between items-center">
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Assigned</div>
+                          <div className="text-xs font-medium text-gray-900 dark:text-white">
+                            {new Date(s.assigned_at).toLocaleDateString()}
+                          </div>
+                        </div>
+                      )}
+                      {s.expires_at && (
+                        <div className={`p-3 rounded-lg flex justify-between items-center ${
+                          (() => {
+                            const days = Math.ceil((new Date(s.expires_at) - new Date()) / (1000 * 60 * 60 * 24));
+                            return days <= 3 ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' : 'bg-gray-50/80 dark:bg-gray-800/50';
+                          })()
+                        }`}>
+                          <div className={`text-xs ${
+                            (() => {
+                              const days = Math.ceil((new Date(s.expires_at) - new Date()) / (1000 * 60 * 60 * 24));
+                              return days <= 3 ? 'text-red-600 dark:text-red-400 font-medium' : 'text-gray-500 dark:text-gray-400';
+                            })()
+                          }`}>Expires</div>
+                          <div className={`text-xs font-medium ${
+                             (() => {
+                              const days = Math.ceil((new Date(s.expires_at) - new Date()) / (1000 * 60 * 60 * 24));
+                              return days <= 3 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white';
+                            })()
+                          }`}>
+                            {new Date(s.expires_at).toLocaleDateString()}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <Button

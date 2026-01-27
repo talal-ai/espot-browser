@@ -138,8 +138,6 @@ function createMainWindow() {
     frame: true,
     titleBarStyle: 'default',
     icon: windowIcon,
-    fullscreen: true,
-    fullscreenable: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -177,9 +175,10 @@ function createMainWindow() {
     }, 1000);
   }
 
-  // Show window when ready
+  // Show window when ready and maximize it
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
+    mainWindow?.maximize();
   });
 
   // Log renderer console messages

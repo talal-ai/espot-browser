@@ -297,6 +297,7 @@ class Service(BaseModel):
 
 class ServiceWithAssignment(Service):
     assigned_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
 
 class UserService(BaseModel):
     id: str
@@ -304,6 +305,7 @@ class UserService(BaseModel):
     service_id: str
     assigned_by: Optional[str] = None
     created_at: datetime
+    expires_at: Optional[datetime] = None
 
 class ServiceCreate(BaseModel):
     name: str
@@ -525,3 +527,46 @@ class DashboardCharts(BaseModel):
     service_usage: List[ChartDataPoint]
     recent_activity: List[ActivityItem]
 
+
+# Group Models
+class GroupBase(BaseModel):
+    """Base group model"""
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+
+class GroupCreate(GroupBase):
+    """Group creation model"""
+    pass
+
+class GroupUpdate(BaseModel):
+    """Group update model"""
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+
+class Group(GroupBase):
+    """Group model"""
+    id: str
+    created_at: datetime
+    updated_at: datetime
+    member_count: int = 0
+    
+    class Config:
+        from_attributes = True
+
+# User-Group Assignment Models
+class UserGroupBase(BaseModel):
+    """Base user-group assignment model"""
+    group_id: str
+    user_id: str
+
+class UserGroupCreate(UserGroupBase):
+    """User-group assignment creation model"""
+    pass
+
+class UserGroup(UserGroupBase):
+    """User-group assignment model"""
+    id: str
+    joined_at: datetime
+    
+    class Config:
+        from_attributes = True

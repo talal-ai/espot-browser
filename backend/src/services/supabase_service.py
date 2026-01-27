@@ -19,7 +19,8 @@ from src.models.database import (
     SystemLog, SystemLogCreate,
     AuditLog, AuditLogCreate,
     SystemStats, HealthStatus,
-    ChartDataPoint, ActivityItem, DashboardCharts
+    ChartDataPoint, ActivityItem, DashboardCharts,
+    Group, GroupCreate, GroupUpdate, UserGroup, UserGroupCreate
 )
 
 logger = logging.getLogger(__name__)
@@ -145,6 +146,7 @@ class SupabaseService:
                 assignment = assignment_map.get(user["id"], {})
                 user_data["assigned_at"] = assignment.get("created_at")
                 user_data["assigned_by"] = assignment.get("assigned_by")
+                user_data["expires_at"] = assignment.get("expires_at")
                 users.append(user_data)
             
             return users
@@ -220,6 +222,144 @@ class SupabaseService:
             logger.error(f"Error deleting user {user_id}: {e}")
             raise
     
+    async def get_user_by_id(self, user_id: str) -> Optional[User]:
+        """Get user by ID"""
+        try:
+            response = self.admin_client.table("users").select("*").eq("id", user_id).execute()
+            
+            if response.data:
+                return User(**response.data[0])
+            return None
+        except Exception as e:
+            logger.error(f"Error getting user {user_id}: {e}")
+            return None
+
+
+
+    # Group Management
+    async def create_group(self, group_data: GroupCreate) -> Group:
+        """Create a new group"""
+        try:
+            data = group_data.dict()
+            data["created_at"] = datetime.utcnow().isoformat()
+            data["updated_at"] = datetime.utcnow().isoformat()
+            
+            response = self.admin_client.table("groups").insert(data).execute()
+            if response.data:
+                grp = response.data[0]
+                grp["member_count"] = 0
+                return Group(**grp)
+            raise Exception("Failed to create group")
+        except Exception as e:
+            logger.error(f"Error creating group: {e}")
+            raise
+
+    async def get_groups(self) -> List[Group]:
+        """Get all groups with member counts"""
+        try:
+            groups_response = self.admin_client.table("groups").select("*").order("name").execute()
+            if not groups_response.data:
+                return []
+            
+            groups = []
+            for grp in groups_response.data:
+                group_id = grp["id"]
+                member_count = self.admin_client.table("user_groups").select("id", count="exact").eq("group_id", group_id).execute().count
+                grp["member_count"] = member_count or 0
+                groups.append(Group(**grp))
+                
+            return groups
+        except Exception as e:
+            logger.error(f"Error getting groups: {e}")
+            raise
+
+    async def get_group(self, group_id: str) -> Optional[Group]:
+        """Get specific group details"""
+        try:
+            response = self.admin_client.table("groups").select("*").eq("id", group_id).execute()
+            if not response.data:
+                return None
+                
+            grp = response.data[0]
+            member_count = self.admin_client.table("user_groups").select("id", count="exact").eq("group_id", group_id).execute().count
+            grp["member_count"] = member_count or 0
+            
+            return Group(**grp)
+        except Exception as e:
+            logger.error(f"Error getting group {group_id}: {e}")
+            return None
+
+    async def update_group(self, group_id: str, group_data: GroupUpdate) -> Optional[Group]:
+        """Update a group"""
+        try:
+            data = group_data.dict(exclude_unset=True)
+            data["updated_at"] = datetime.utcnow().isoformat()
+            
+            response = self.admin_client.table("groups").update(data).eq("id", group_id).execute()
+            if response.data:
+                return await self.get_group(group_id)
+            return None
+        except Exception as e:
+            logger.error(f"Error updating group {group_id}: {e}")
+            raise
+
+    async def delete_group(self, group_id: str) -> bool:
+        """Delete a group"""
+        try:
+            self.admin_client.table("user_groups").delete().eq("group_id", group_id).execute()
+            self.admin_client.table("groups").delete().eq("id", group_id).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting group {group_id}: {e}")
+            raise
+
+    async def add_user_to_group(self, group_id: str, user_id: str) -> bool:
+        """Add user to group"""
+        try:
+            data = {
+                "group_id": group_id,
+                "user_id": user_id,
+                "joined_at": datetime.utcnow().isoformat()
+            }
+            self.admin_client.table("user_groups").insert(data).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Error adding user {user_id} to group {group_id}: {e}")
+            if "duplicate key" in str(e).lower():
+                return True
+            raise
+
+    async def remove_user_from_group(self, group_id: str, user_id: str) -> bool:
+        """Remove user from group"""
+        try:
+            self.admin_client.table("user_groups").delete().eq("group_id", group_id).eq("user_id", user_id).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Error removing user {user_id} from group {group_id}: {e}")
+            raise
+
+    async def get_group_users(self, group_id: str) -> List[Dict[str, Any]]:
+        """Get all users in a group"""
+        try:
+            response = self.admin_client.table("user_groups").select("user_id, joined_at").eq("group_id", group_id).execute()
+            if not response.data:
+                return []
+            
+            user_ids = [item["user_id"] for item in response.data]
+            joined_map = {item["user_id"]: item["joined_at"] for item in response.data}
+            
+            users_response = self.admin_client.table("users").select("*").in_("id", user_ids).execute()
+            
+            users = []
+            for user_data in users_response.data:
+                user_data["joined_at"] = joined_map.get(user_data["id"])
+                users.append(user_data)
+                
+            return users
+        except Exception as e:
+            logger.error(f"Error getting group users for {group_id}: {e}")
+            raise
+
     # Proxy Management
     async def create_proxy(self, proxy_data: ProxyCreate) -> Proxy:
         """Create a new proxy"""
@@ -562,6 +702,22 @@ class SupabaseService:
             return 0
         except Exception as e:
             logger.error(f"Error terminating all sessions: {e}")
+            raise
+    
+    async def delete_all_sessions(self) -> int:
+        """Delete all session records from the database"""
+        try:
+            # First get the count
+            count_response = self.client.table("user_sessions").select("id", count="exact").execute()
+            count = count_response.count or 0
+            
+            if count > 0:
+                # Delete all sessions using a wildcard-like condition
+                self.client.table("user_sessions").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+            
+            return count
+        except Exception as e:
+            logger.error(f"Error deleting all sessions: {e}")
             raise
 
     # Device Limit Helper Methods
@@ -1051,31 +1207,63 @@ class SupabaseService:
             raise
 
     async def get_user_services(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get all services assigned to a user (direct + via groups)"""
         if self.is_dev_mode:
             return await dev_service.get_user_services(user_id)
         try:
+            results = []
+            seen_service_ids = set()
+
+            # 1. Direct Assignments
             response = self.client.table("user_services")\
-                .select("created_at, service:services(*)")\
+                .select("created_at, expires_at, service:services(*)")\
                 .eq("user_id", user_id)\
                 .execute()
-            results = []
+            
             for row in (response.data or []):
                 svc = row.get("service")
-                if svc:
+                if svc and svc["id"] not in seen_service_ids:
                     svc["assigned_at"] = row.get("created_at")
+                    svc["expires_at"] = row.get("expires_at")
+                    svc["assignment_source"] = "direct"
                     results.append(svc)
+                    seen_service_ids.add(svc["id"])
+
+            # 2. Group Assignments
+            # Get user's groups
+            user_groups_response = self.admin_client.table("user_groups").select("group_id").eq("user_id", user_id).execute()
+            group_ids = [item["group_id"] for item in (user_groups_response.data or [])]
+
+            if group_ids:
+                # Get services for these groups
+                group_services_response = self.admin_client.table("group_services")\
+                    .select("assigned_at, group:groups(name), service:services(*)")\
+                    .in_("group_id", group_ids)\
+                    .execute()
+                
+                for row in (group_services_response.data or []):
+                    svc = row.get("service")
+                    if svc:
+                        if svc["id"] not in seen_service_ids:
+                            svc["assigned_at"] = row.get("assigned_at")
+                            svc["assignment_source"] = f"group:{row.get('group', {}).get('name')}"
+                            results.append(svc)
+                            seen_service_ids.add(svc["id"])
+
             return results
         except Exception as e:
             logger.error(f"Error getting user services for {user_id}: {e}")
             return []
 
-    async def assign_service_to_user(self, service_id: str, user_id: str, assigned_by: Optional[str] = None) -> Dict[str, Any]:
+    async def assign_service_to_user(self, service_id: str, user_id: str, assigned_by: Optional[str] = None, expires_at: Optional[datetime] = None) -> Dict[str, Any]:
         if self.is_dev_mode:
             return await dev_service.assign_service_to_user(service_id, user_id, assigned_by)
         try:
             payload = {"service_id": service_id, "user_id": user_id}
             if assigned_by:
                 payload["assigned_by"] = assigned_by
+            if expires_at:
+                payload["expires_at"] = expires_at.isoformat()
             response = self.admin_client.table("user_services").upsert(payload, on_conflict="user_id,service_id").execute()
             if response.data:
                 return response.data[0]
