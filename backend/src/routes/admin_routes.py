@@ -714,10 +714,17 @@ async def test_proxy(proxy_id: str, admin=Depends(get_current_admin)):
             password=proxy.password
         )
         
-        # Update proxy status based on test
+        # Update proxy status and speed based on test
         from src.models.database import ProxyStatus
         if result.success:
-            proxy_update = ProxyUpdate(status=ProxyStatus.ACTIVE)  # type: ignore
+            # Calculate speed score: faster response = higher score
+            # 1s = 90 score, 2s = 80 score, 5s = 50 score, 10s+ = 0 score
+            speed_score = max(0, min(100, 100 - (result.response_time * 10))) if result.response_time else None
+            
+            proxy_update = ProxyUpdate(
+                status=ProxyStatus.ACTIVE,
+                speed_score=speed_score
+            )  # type: ignore
             await supabase_service.update_proxy(proxy_id, proxy_update)
         else:
             proxy_update = ProxyUpdate(status=ProxyStatus.FAILED)  # type: ignore
@@ -729,6 +736,7 @@ async def test_proxy(proxy_id: str, admin=Depends(get_current_admin)):
             "ip_address": result.ip_address,
             "country": result.country,
             "response_time": result.response_time,
+            "speed_score": max(0, min(100, 100 - (result.response_time * 10))) if result.success and result.response_time else None,
             "error": result.error,
             "tested_at": result.tested_at.isoformat() if result.tested_at else None
         }

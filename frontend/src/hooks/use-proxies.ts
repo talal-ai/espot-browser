@@ -20,12 +20,14 @@ interface UseProxiesReturn {
   deactivateGlobally: () => Promise<ApiResponse<any>>;
   getGlobalStatus: () => Promise<ApiResponse<any>>;
   refresh: () => Promise<void>;
+  testingProxyId: string | null;
 }
 
 export function useProxies(): UseProxiesReturn {
   const [proxies, setProxies] = useState<Proxy[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<{ message: string; statusCode?: number | null; details?: any } | null>(null);
+  const [testingProxyId, setTestingProxyId] = useState<string | null>(null);
   const { toast } = useToast();
 
   // Load proxies from API
@@ -182,16 +184,54 @@ export function useProxies(): UseProxiesReturn {
   const testProxy = useCallback(
     async (proxyId: string): Promise<ApiResponse<{ proxy_id: string; is_working: boolean }>> => {
       try {
+        setTestingProxyId(proxyId);
         const response = await proxiesService.testProxy(proxyId);
 
         if (response.success) {
+          const data = response.data as any;
+          const isWorking = data?.is_working;
+          const responseTime = data?.response_time;
+          const speedScore = data?.speed_score;
+          
+          // Build detailed message
+          let description = isWorking 
+            ? `Proxy is working! IP: ${data?.ip_address || 'Unknown'}`
+            : `Proxy connection failed: ${data?.error || 'Unknown error'}`;
+          
+          if (isWorking && responseTime) {
+            description += ` | Response: ${responseTime.toFixed(2)}s`;
+            if (speedScore) {
+              description += ` | Speed: ${speedScore.toFixed(0)}%`;
+            }
+          }
+          
           toast({
-            title: 'Proxy Test',
-            description: response.data?.is_working
-              ? 'Proxy is working correctly'
-              : 'Proxy connection failed',
-            variant: response.data?.is_working ? 'default' : 'destructive',
+            title: isWorking ? '✅ Proxy Test Passed' : '❌ Proxy Test Failed',
+            description,
+            variant: isWorking ? 'default' : 'destructive',
           });
+          
+          // Optimistically update the proxy in the local state
+          if (isWorking) {
+             setProxies(currentProxies => 
+               currentProxies.map(p => 
+                 p.id === proxyId 
+                   ? { ...p, status: 'active', speed_score: speedScore, last_checked: new Date().toISOString() } 
+                   : p
+               )
+             );
+          } else {
+             // If failed, maybe mark as error/failed if your logic requires it, 
+             // but usually we just keep it or mark as inactive/failed
+             setProxies(currentProxies => 
+               currentProxies.map(p => 
+                 p.id === proxyId 
+                   ? { ...p, status: 'inactive' } 
+                   : p
+               )
+             );
+          }
+          
           return { success: true, data: response.data };
         } else {
           toast({
@@ -213,6 +253,8 @@ export function useProxies(): UseProxiesReturn {
           description: errorObj.message,
         });
         return { success: false, error: errorObj };
+      } finally {
+        setTestingProxyId(null);
       }
     },
     [toast]
@@ -376,6 +418,7 @@ export function useProxies(): UseProxiesReturn {
     deactivateGlobally,
     getGlobalStatus,
     refresh: loadProxies,
+    testingProxyId,
   };
 }
 

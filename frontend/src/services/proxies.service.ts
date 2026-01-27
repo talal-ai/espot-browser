@@ -48,10 +48,41 @@ class ProxiesService {
   /**
    * Test proxy connection
    */
-  async testProxy(proxyId: string): Promise<ApiResponse<{ proxy_id: string; is_working: boolean }>> {
-    return apiService.post<{ proxy_id: string; is_working: boolean }>(
-      API_ENDPOINTS.proxies.test(proxyId)
-    );
+  async testProxy(proxyId: string): Promise<ApiResponse<{
+    proxy_id: string;
+    is_working: boolean;
+    ip_address?: string;
+    response_time?: number;
+    speed_score?: number;
+    country?: string;
+    error?: string;
+  }>> {
+    const response = await apiService.post<{
+      success: boolean;
+      proxy_id: string;
+      ip_address?: string;
+      response_time?: number;
+      speed_score?: number;
+      country?: string;
+      error?: string;
+    }>(API_ENDPOINTS.proxies.test(proxyId));
+    
+    // Map backend response to expected format
+    if (response.success && response.data) {
+      return {
+        success: true,
+        data: {
+          proxy_id: response.data.proxy_id,
+          is_working: response.data.success,
+          ip_address: response.data.ip_address,
+          response_time: response.data.response_time,
+          speed_score: response.data.speed_score,
+          country: response.data.country,
+          error: response.data.error
+        }
+      };
+    }
+    return response as any;
   }
 
   /**

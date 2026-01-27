@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Plus, Edit, Trash2, MapPin, RefreshCw, TestTube, Power, Globe, CheckCircle, Wifi, Server, Activity } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Plus, Edit, Trash2, MapPin, RefreshCw, TestTube, Power, Globe, CheckCircle, Wifi, Server, Activity, Download, Upload, FileText, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
@@ -15,7 +15,7 @@ import { Badge } from '../../components/ui/badge';
 import PageSkeleton from '../../components/common/PageSkeleton';
 
 const Proxies = () => {
-  const { proxies, loading, createProxy, updateProxy, deleteProxy, testProxy, activateGlobally, deactivateGlobally, getGlobalStatus, refresh } = useProxies();
+  const { proxies, loading, createProxy, updateProxy, deleteProxy, testProxy, activateGlobally, deactivateGlobally, getGlobalStatus, refresh, testingProxyId } = useProxies();
   const { currentIP, proxyIP } = useProxySettings();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProxy, setEditingProxy] = useState(null);
@@ -28,6 +28,14 @@ const Proxies = () => {
   const [proxyEndpoint, setProxyEndpoint] = useState(null);
   const [verifying, setVerifying] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Bulk import/export state
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState('');
+  const fileInputRef = useRef(null);
+  
   const [formData, setFormData] = useState({
     host: '',
     port: 8080,
@@ -114,6 +122,141 @@ const Proxies = () => {
     setRefreshing(true);
     await refresh();
     setRefreshing(false);
+  };
+
+  // Parse proxy string in format: Protocol:IP:Port:Username:Password
+  const parseProxyLine = (line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) return null; // Skip empty lines and comments
+    
+    const parts = trimmed.split(':');
+    if (parts.length < 3) return null; // Need at least protocol:ip:port
+    
+    const [protocol, host, port, username = '', password = ''] = parts;
+    
+    const validProtocols = ['http', 'https', 'socks4', 'socks5', 'shadowsocks'];
+    if (!validProtocols.includes(protocol.toLowerCase())) return null;
+    
+    const portNum = parseInt(port);
+    if (isNaN(portNum) || portNum < 1 || portNum > 65535) return null;
+    
+    return {
+      protocol: protocol.toLowerCase(),
+      host: host.trim(),
+      port: portNum,
+      username: username || '',
+      password: password || '',
+      country: 'US',
+      status: 'active'
+    };
+  };
+
+  // Parse all proxy lines from text
+  const parseProxies = (text) => {
+    const lines = text.split('\n');
+    const parsed = [];
+    const errors = [];
+    
+    lines.forEach((line, index) => {
+      if (line.trim() && !line.trim().startsWith('#')) {
+        const proxy = parseProxyLine(line);
+        if (proxy) {
+          parsed.push(proxy);
+        } else {
+          errors.push(`Line ${index + 1}: Invalid format`);
+        }
+      }
+    });
+    
+    return { parsed, errors };
+  };
+
+  // Handle bulk import
+  const handleBulkImport = async () => {
+    setImporting(true);
+    setImportError('');
+    
+    try {
+      const { parsed, errors } = parseProxies(importText);
+      
+      if (parsed.length === 0) {
+        setImportError('No valid proxies found. Format: Protocol:IP:Port:Username:Password');
+        return;
+      }
+      
+      // Import each proxy
+      let successCount = 0;
+      for (const proxyData of parsed) {
+        const result = await createProxy(proxyData);
+        if (result.success) successCount++;
+      }
+      
+      if (successCount > 0) {
+        await refresh();
+        setImportDialogOpen(false);
+        setImportText('');
+      }
+    } catch (error) {
+      setImportError('Import failed: ' + error.message);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  // Handle file upload
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setImportText(event.target.result);
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  // Export proxies to text file
+  const handleExport = () => {
+    const lines = proxies.map(p => 
+      `${p.protocol || 'http'}:${p.host || p.ip}:${p.port}:${p.username || ''}:${p.password || ''}`
+    );
+    const content = lines.join('\n');
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `proxies_export_${new Date().toISOString().split('T')[0]}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Download template file
+  const downloadTemplate = () => {
+    const template = `# Proxy Import Template
+# Format: Protocol:IP:Port:Username:Password
+# Supported protocols: http, https, socks4, socks5
+# Username and password are optional (leave empty after port)
+#
+# Examples:
+http:192.168.1.100:8080:user1:pass123
+https:proxy.example.com:443:admin:secret
+socks5:10.0.0.50:1080::
+http:45.33.32.156:3128::`;
+    
+    const blob = new Blob([template], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'proxy_import_template.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Get parsed count for preview
+  const getParsedCount = () => {
+    if (!importText.trim()) return 0;
+    const { parsed } = parseProxies(importText);
+    return parsed.length;
   };
 
   // Verify current IP through Electron
@@ -253,18 +396,24 @@ const Proxies = () => {
     {
       key: 'speed_score',
       label: 'Speed',
-      render: (value) => value ? (
-        <div className="flex items-center gap-2">
-          <div className="w-16 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-blue-500 to-green-500"
-              style={{ width: `${value}%` }}
-            />
+      render: (value) => value !== null && value !== undefined ? (() => {
+        const score = Math.round(value);
+        const colorClass = score >= 80 ? 'from-green-500 to-emerald-500' : 
+                          score >= 50 ? 'from-yellow-500 to-orange-500' : 
+                          'from-red-500 to-orange-500';
+        return (
+          <div className="flex items-center gap-2" title={`Speed Score: ${score}% (Lower response time = Higher score)`}>
+            <div className="w-16 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div
+                className={`h-full bg-gradient-to-r ${colorClass}`}
+                style={{ width: `${score}%` }}
+              />
+            </div>
+            <span className="text-xs font-medium">{score}%</span>
           </div>
-          <span className="text-xs font-medium">{value}%</span>
-        </div>
-      ) : (
-        <span className="text-gray-400">N/A</span>
+        );
+      })() : (
+        <span className="text-gray-400 text-sm">Test to measure</span>
       )
     },
     {
@@ -298,8 +447,9 @@ const Proxies = () => {
               e.stopPropagation();
               handleTest(row);
             }}
+            disabled={testingProxyId === row.id}
           >
-            <TestTube className="w-4 h-4 text-blue-500" />
+            <TestTube className={`w-4 h-4 group-hover:text-blue-500 ${testingProxyId === row.id ? 'animate-spin text-blue-500' : 'text-gray-500'}`} />
           </Button>
           <Button
             variant="ghost"
@@ -341,7 +491,7 @@ const Proxies = () => {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Proxy Management</h1>
           <p className="text-gray-600 dark:text-gray-400">Configure and manage proxy servers for secure routing</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           <Button
             variant="outline"
             onClick={handleRefresh}
@@ -351,6 +501,38 @@ const Proxies = () => {
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
+          
+          {/* Import Button */}
+          <Button
+            variant="outline"
+            onClick={() => setImportDialogOpen(true)}
+            className="gap-2"
+          >
+            <Upload className="w-4 h-4" />
+            Import
+          </Button>
+          
+          {/* Export Button */}
+          <Button
+            variant="outline"
+            onClick={handleExport}
+            disabled={proxies.length === 0}
+            className="gap-2"
+          >
+            <Download className="w-4 h-4" />
+            Export
+          </Button>
+          
+          {/* Template Button */}
+          <Button
+            variant="outline"
+            onClick={downloadTemplate}
+            className="gap-2"
+          >
+            <FileText className="w-4 h-4" />
+            Template
+          </Button>
+          
           <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
             <DialogTrigger asChild>
               <Button className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/30 gap-2">
@@ -594,6 +776,104 @@ const Proxies = () => {
         confirmText="Delete"
         cancelText="Cancel"
       />
+
+      {/* Bulk Import Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={(open) => { setImportDialogOpen(open); if (!open) { setImportText(''); setImportError(''); } }}>
+        <DialogContent className="max-w-2xl backdrop-blur-xl bg-white/95 dark:bg-gray-900/95 border-gray-200 dark:border-gray-800">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="w-5 h-5 text-blue-500" />
+              Import Proxies in Bulk
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {/* Format info */}
+            <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+              <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                Format: <code className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-800 font-mono text-xs">Protocol:IP:Port:Username:Password</code>
+              </p>
+              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                One proxy per line. Username/Password optional. Lines starting with # are ignored.
+              </p>
+            </div>
+
+            {/* Textarea for proxy input */}
+            <div>
+              <Label htmlFor="proxy-input">Paste proxies (one per line)</Label>
+              <textarea
+                id="proxy-input"
+                value={importText}
+                onChange={(e) => { setImportText(e.target.value); setImportError(''); }}
+                placeholder={`http:192.168.1.100:8080:user:pass\nsocks5:10.0.0.50:1080::\nhttps:proxy.example.com:443:admin:secret`}
+                className="mt-1.5 w-full h-40 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              />
+            </div>
+
+            {/* File upload */}
+            <div className="flex items-center gap-4">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept=".txt,.csv"
+                className="hidden"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                className="gap-2"
+              >
+                <FileText className="w-4 h-4" />
+                Upload File
+              </Button>
+              
+              {/* Preview count */}
+              {importText.trim() && (
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-green-500" />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {getParsedCount()} valid {getParsedCount() === 1 ? 'proxy' : 'proxies'} found
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Error message */}
+            {importError && (
+              <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                <p className="text-sm text-red-600 dark:text-red-400">{importError}</p>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleBulkImport}
+                disabled={importing || !importText.trim() || getParsedCount() === 0}
+                className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 gap-2"
+              >
+                {importing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Importing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4" />
+                    Import {getParsedCount()} {getParsedCount() === 1 ? 'Proxy' : 'Proxies'}
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
