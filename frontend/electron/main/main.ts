@@ -6,15 +6,15 @@ import { generateModernAutofillScript } from './autofill-generator';
 import axios from 'axios';
 
 const APP_ID = 'com.espot.browser';
-const APP_NAME = 'Espot Browser';
+const APP_NAME = 'ESPOT Browser';
 
 // API Base URL for fetching profiles
 const API_BASE_URL = process.env.API_BASE_URL ?? (process.env.NODE_ENV === 'development'
   ? 'http://localhost:8000'
   : 'https://espot-browser.onrender.com');
 
-// Check if in development mode - use app.isPackaged for reliability in production builds
-const isDev = !app.isPackaged;
+// Check if in development mode
+const isDev = process.env.NODE_ENV === 'development';
 // DISABLED: Browser feature restrictions (was causing Google login issues)
 // process.env.STRICT_WEBRTC = process.env.STRICT_WEBRTC || '1';
 // const STRICT_WEBRTC_ENABLED = process.env.STRICT_WEBRTC === '1';
@@ -137,8 +137,9 @@ function createMainWindow() {
     show: false,
     frame: true,
     titleBarStyle: 'default',
-    title: 'Espot Browser',
     icon: windowIcon,
+    fullscreen: true,
+    fullscreenable: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -163,37 +164,22 @@ function createMainWindow() {
     mainWindow.webContents.openDevTools();
   } else {
     // In production, load from built files
-    // __dirname in packaged app: resources/app.asar/dist-electron
-    // dist folder is at: resources/app.asar/dist
     const htmlPath = path.join(__dirname, '../dist/index.html');
-    console.log('[ESPOT] Production mode - Loading from:', htmlPath);
-    console.log('[ESPOT] __dirname:', __dirname);
-    console.log('[ESPOT] app.isPackaged:', app.isPackaged);
-    console.log('[ESPOT] app.getAppPath():', app.getAppPath());
-    
+    console.log('Production mode - Loading from:', htmlPath);
+    console.log('__dirname:', __dirname);
     mainWindow.loadFile(htmlPath).catch((err) => {
-      console.error('[ESPOT] Failed to load HTML file:', err);
-      // Fallback: try alternate path using app.getAppPath()
-      const fallbackPath = path.join(app.getAppPath(), 'dist', 'index.html');
-      console.log('[ESPOT] Trying fallback path:', fallbackPath);
-      mainWindow?.loadFile(fallbackPath).catch((err2) => {
-        console.error('[ESPOT] Fallback also failed:', err2);
-      });
+      console.error('Failed to load HTML file:', err);
     });
     
-    // Open DevTools in production for debugging (REMOVE AFTER FIXING)
+    // Open DevTools in production for debugging
     setTimeout(() => {
       mainWindow?.webContents.openDevTools();
     }, 1000);
   }
 
-  // Show window when ready and maximize it
+  // Show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
-    mainWindow?.maximize();
-    if (mainWindow) {
-      setupAutoUpdater();
-    }
   });
 
   // Log renderer console messages
@@ -2078,13 +2064,8 @@ let updateStatus: {
  * Initialize auto-updater (only in production builds)
  */
 function setupAutoUpdater() {
-  // Allow forcing update check in dev mode for testing
-  const forceUpdateCheck = process.env.FORCE_UPDATE_CHECK === 'true';
-  
-  if (isDev && !forceUpdateCheck) {
-    console.log('[AUTO-UPDATE] Skipping auto-updater in development mode. Set FORCE_UPDATE_CHECK=true to test.');
-    // Don't return here if we want to ensure listeners are registered/handled
-    // But for now, we'll keep the return but add a log to ensure we know it's skipped.
+  if (isDev) {
+    console.log('[AUTO-UPDATE] Skipping auto-updater in development mode');
     return;
   }
 
@@ -2099,9 +2080,7 @@ function setupAutoUpdater() {
     console.log('[AUTO-UPDATE] Checking for updates...');
     updateStatus.checking = true;
     updateStatus.error = null;
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('updater:status', 'checking');
-    }
+    sendUpdateStatusToRenderer();
   });
 
   autoUpdater.on('update-available', (info) => {
@@ -2109,45 +2088,35 @@ function setupAutoUpdater() {
     updateStatus.checking = false;
     updateStatus.available = true;
     updateStatus.version = info.version;
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('updater:available', info);
-    }
+    sendUpdateStatusToRenderer();
   });
 
   autoUpdater.on('update-not-available', (info) => {
     console.log('[AUTO-UPDATE] No updates available. Current version:', info.version);
     updateStatus.checking = false;
     updateStatus.available = false;
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('updater:not-available', info);
-    }
+    sendUpdateStatusToRenderer();
   });
 
   autoUpdater.on('error', (err) => {
     console.error('[AUTO-UPDATE] Error:', err);
     updateStatus.checking = false;
     updateStatus.error = err.message;
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('updater:error', err.message);
-    }
+    sendUpdateStatusToRenderer();
   });
 
   autoUpdater.on('download-progress', (progressObj) => {
     const logMessage = `[AUTO-UPDATE] Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}% (${progressObj.transferred}/${progressObj.total})`;
     console.log(logMessage);
     updateStatus.progress = Math.round(progressObj.percent);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('updater:download-progress', progressObj);
-    }
+    sendUpdateStatusToRenderer();
   });
 
   autoUpdater.on('update-downloaded', (info) => {
     console.log('[AUTO-UPDATE] Update downloaded:', info.version);
     updateStatus.downloaded = true;
     updateStatus.progress = 100;
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('updater:downloaded', info);
-    }
+    sendUpdateStatusToRenderer();
   });
 
   // If a local generic update server is configured for testing, use it
@@ -2178,18 +2147,12 @@ function sendUpdateStatusToRenderer() {
 }
 
 // IPC handlers for update operations
-ipcMain.handle('updater:check', async () => {
-  const forceUpdateCheck = process.env.FORCE_UPDATE_CHECK === 'true';
-  if (isDev && !forceUpdateCheck) {
-    console.log('[AUTO-UPDATE] Updates disabled in dev mode. Set FORCE_UPDATE_CHECK=true to test.');
-    return { success: false, error: 'Updates disabled in development. Set FORCE_UPDATE_CHECK=true to enable testing.' };
+ipcMain.handle('updates:check', async () => {
+  if (isDev) {
+    return { success: false, error: 'Updates disabled in development' };
   }
   
   try {
-    // Initialize updater if not already done (in case setupAutoUpdater was skipped)
-    if (forceUpdateCheck && isDev) {
-      console.log('[AUTO-UPDATE] Force-checking for updates in dev mode...');
-    }
     await autoUpdater.checkForUpdates();
     return { success: true };
   } catch (error) {
@@ -2216,7 +2179,7 @@ ipcMain.handle('updates:download', async () => {
   }
 });
 
-ipcMain.handle('updater:quit-and-install', () => {
+ipcMain.handle('updates:install', () => {
   if (isDev) {
     return { success: false, error: 'Updates disabled in development' };
   }
