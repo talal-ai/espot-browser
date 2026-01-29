@@ -157,6 +157,8 @@ export interface Session {
   local_storage?: Record<string, any> | null;
   ip_address?: string | null;
   user_agent?: string | null;
+  device_id?: string | null;
+  device_info?: Record<string, any> | null;
   status: 'active' | 'idle' | 'ended' | 'crashed';
   started_at: string;
   ended_at?: string | null;
@@ -177,6 +179,8 @@ export interface SessionCreate {
   browser_profile?: Record<string, any>;
   cookies?: Record<string, any>;
   local_storage?: Record<string, any>;
+  device_id?: string;
+  device_info?: Record<string, any>;
   status?: 'active' | 'idle' | 'ended' | 'crashed';
 }
 

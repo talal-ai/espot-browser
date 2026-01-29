@@ -224,9 +224,12 @@ const UserDashboard = () => {
           }
         }
 
+        // Find profile index for user-friendly naming
+        const profileIndex = fingerprintProfiles.findIndex(p => p.fingerprint_profile_id === fingerprintProfileId) + 1;
+        
         toast({
           title: "Profile Activated! 🎭",
-          description: `"${assignment.profile.name}" is now active. All new browser windows will use this fingerprint.`
+          description: `Profile ${profileIndex} is now active. All new browser windows will use this identity.`
         });
 
         // Reload profiles to update UI
@@ -513,19 +516,19 @@ const UserDashboard = () => {
                 <Fingerprint className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Browser Fingerprints</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Manage your anti-detect identity profiles</p>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Profiles</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Manage your secure browsing identities</p>
               </div>
             </div>
             {activeProfile && (
               <Badge className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700">
-                Active: {activeProfile.name}
+                Active: Profile {(fingerprintProfiles.findIndex(p => p.fingerprint_profile_id === activeProfileId) + 1) || '?'}
               </Badge>
             )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {fingerprintProfiles.map((item) => {
+            {fingerprintProfiles.map((item, index) => {
               const profile = item.profile;
               if (!profile) return null;
               const isActive = item.fingerprint_profile_id === activeProfileId;
@@ -561,36 +564,18 @@ const UserDashboard = () => {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-gray-900 dark:text-white truncate">{profile.name}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mt-0.5">
-                        <Globe className="w-3 h-3" />
-                        <span>{profile.platform}</span>
-                        <span>•</span>
-                        <span>{profile.screen_resolution}</span>
-                      </div>
+                      <div className="font-semibold text-gray-900 dark:text-white truncate">Profile {index + 1}</div>
+
                     </div>
                   </div>
 
-                  <div className="p-3 rounded-lg bg-gray-100/80 dark:bg-gray-900/50 mb-4">
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">User Agent</div>
-                    <div className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">
-                      {profile.user_agent ? profile.user_agent.substring(0, 50) + '...' : 'Unknown UA'}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <Badge variant="outline" className="text-xs">
-                      {profile.user_agent?.includes('Chrome') ? 'Chrome' :
-                        profile.user_agent?.includes('Firefox') ? 'Firefox' :
-                          profile.user_agent?.includes('Safari') ? 'Safari' :
-                            profile.user_agent?.includes('Edge') ? 'Edge' : 'Browser'}
-                    </Badge>
+                  <div className="flex items-center justify-end">
                     {!isActive && (
                       <Button
                         size="sm"
                         onClick={() => handleActivateProfile(item.fingerprint_profile_id)}
                         disabled={activating}
-                        className="bg-gradient-to-r from-blue-500 to-orange-600 hover:from-blue-600 hover:to-orange-700 shadow-md"
+                        className="bg-gradient-to-r from-blue-500 to-orange-600 hover:from-blue-600 hover:to-orange-700 shadow-md w-full mt-2"
                       >
                         {activating ? "Activating..." : "Activate"}
                       </Button>

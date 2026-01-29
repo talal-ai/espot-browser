@@ -10,8 +10,10 @@ import PageSkeleton from '../../components/common/PageSkeleton';
 import { supabase } from '../../lib/supabase';
 import { sessionsService } from '../../services/sessions.service';
 import { UAParser } from 'ua-parser-js';
+import { useToast } from '../../hooks/use-toast';
 
 const Sessions = () => {
+  const { toast } = useToast();
   const { sessions, loading, endSession, deleteSession, refresh, terminateAllSessions } = useSessions();
   const [currentUser, setCurrentUser] = useState(null);
   const [endConfirmOpen, setEndConfirmOpen] = useState(false);
@@ -146,6 +148,40 @@ const Sessions = () => {
           </div>
         );
       }
+    },
+    {
+      key: 'device_id',
+      label: 'Device ID',
+      sortable: true,
+      render: (value, row) => {
+        // Fallback to backup ID in device_info if main column is empty
+        const displayValue = value || row.device_info?._backup_device_id;
+        
+        return (
+        <div className="flex flex-col gap-1">
+           {displayValue ? (
+             <div className="flex items-center gap-1 group cursor-pointer" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(displayValue);
+                    toast({
+                      title: "Device ID Copied",
+                      description: "The device ID has been copied to your clipboard.",
+                    });
+                  }}
+             >
+               <span className="font-mono text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-700 select-all hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                 {displayValue.substring(0, 8)}...
+               </span>
+               <div className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-gray-500 absolute bg-white dark:bg-gray-900 border p-1 rounded shadow-sm -mt-8 pointer-events-none z-10 whitespace-nowrap">
+                 {displayValue} (Click to copy)
+               </div>
+             </div>
+           ) : (
+             <span className="text-gray-400 text-xs italic">Not tracked</span>
+           )}
+        </div>
+      )}
     },
     {
       key: 'username',

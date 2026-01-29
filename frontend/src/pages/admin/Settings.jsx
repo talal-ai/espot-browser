@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Palette, Save } from 'lucide-react';
 import GlassCard from '../../components/common/GlassCard';
 import { Button } from '../../components/ui/button';
@@ -11,11 +11,64 @@ import { Switch } from '../../components/ui/switch';
 import Logo from '../../components/common/Logo';
 
 const Settings = () => {
+  const [appVersion, setAppVersion] = useState('Checking...');
   const [branding, setBranding] = useState(getData(STORAGE_KEYS.BRANDING));
   const [searchBarEnabled, setSearchBarEnabled] = useState(true);
   const [autoLogin, setAutoLogin] = useState(true);
   const [multiDevice, setMultiDevice] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    const fetchVersion = async () => {
+      try {
+        if (window.electronAPI?.getAppVersion) {
+          const version = await window.electronAPI.getAppVersion();
+          setAppVersion(version);
+        } else {
+          setAppVersion('Unknown');
+        }
+      } catch (error) {
+        console.error('Failed to get app version:', error);
+        setAppVersion('Error');
+      }
+    };
+    
+    fetchVersion();
+  }, []);
+
+  useEffect(() => {
+    if (!window.electronAPI?.updater) return;
+
+    const cleanupAvailable = window.electronAPI.updater.onUpdateAvailable((info) => {
+      toast({ 
+        title: 'Update Available', 
+        description: `Version ${info.version} is available. Downloading...`,
+        variant: 'default'
+      });
+    });
+
+    const cleanupNotAvailable = window.electronAPI.updater.onUpdateNotAvailable((info) => {
+      toast({ 
+        title: 'You are up to date', 
+        description: `Espot Browser v${info.version} is the latest version available.`, 
+        variant: 'default'
+      });
+    });
+
+    const cleanupError = window.electronAPI.updater.onError((error) => {
+      toast({ 
+        title: 'Update Error', 
+        description: typeof error === 'string' ? error : 'Failed to check for updates', 
+        variant: 'destructive'
+      });
+    });
+
+    return () => {
+      if (typeof cleanupAvailable === 'function') cleanupAvailable();
+      if (typeof cleanupNotAvailable === 'function') cleanupNotAvailable();
+      if (typeof cleanupError === 'function') cleanupError();
+    };
+  }, [toast]);
 
   const handleSaveBranding = (e) => {
     e.preventDefault();
@@ -141,6 +194,33 @@ const Settings = () => {
                     <p className="text-sm text-gray-600 dark:text-gray-400">Allow users to login from multiple devices</p>
                   </div>
                   <Switch checked={multiDevice} onCheckedChange={setMultiDevice} />
+                </div>
+                
+                <div className="flex items-center justify-between py-4">
+                  <div>
+                    <h3 className="font-medium text-gray-900 dark:text-white">Software Updates</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Current Version: {appVersion}</p>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      console.log('Checking for updates clicked...');
+                      if (window.electronAPI?.updater?.checkForUpdates) {
+                        try {
+                          window.electronAPI.updater.checkForUpdates();
+                          toast({ title: 'Checking for updates...', description: 'Please wait while we check for the latest version.' });
+                        } catch (err) {
+                          console.error('Update check failed:', err);
+                          toast({ title: 'Update Check Failed', description: 'Could not connect to update server.', variant: 'destructive' });
+                        }
+                      } else {
+                        console.error('Electron API not found');
+                        toast({ title: 'Error', description: 'Update API not available. Try restarting the app.', variant: 'destructive' });
+                      }
+                    }}
+                  >
+                    Check for Updates
+                  </Button>
                 </div>
               </div>
             </div>

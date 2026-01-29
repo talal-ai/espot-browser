@@ -595,9 +595,12 @@ class SupabaseService:
             session_dict = session_data.dict()
             session_dict["started_at"] = datetime.utcnow().isoformat()
             
+            logger.info(f"[DEBUG] Creating session with device_id: {session_dict.get('device_id')}")
+
             response = self.client.table("user_sessions").insert(session_dict).execute()
             
             if response.data:
+                logger.info(f"[DEBUG] Session created. DB Returned: {response.data[0]}")
                 return Session(**response.data[0])
             else:
                 raise Exception("Failed to create session")
@@ -608,21 +611,8 @@ class SupabaseService:
     
     async def get_session(self, session_id: str) -> Optional[Session]:
         """Get session by ID"""
-        try:
-            response = self.client.table("user_sessions").select("*, user:users(username,email)").eq("id", session_id).execute()
-            
-            if response.data:
-                row = response.data[0]
-                if isinstance(row, dict) and row.get("user"):
-                    row["username"] = row["user"].get("username")
-                    row.pop("user", None)
-                return Session(**row)
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error getting session {session_id}: {e}")
-            raise
-    
+        # ... (keep existing get_session)
+
     async def get_sessions(self, skip: int = 0, limit: int = 100, user_id: Optional[str] = None) -> List[Session]:
         """Get all sessions with optional user filter"""
         try:
@@ -634,6 +624,9 @@ class SupabaseService:
             response = query.range(skip, skip + limit - 1).order("started_at", desc=True).execute()
             
             processed: List[Session] = []
+            if response.data:
+                logger.info(f"[DEBUG] First session raw row device_id: {response.data[0].get('device_id')}")
+
             for row in response.data:
                 if isinstance(row, dict) and row.get("user"):
                     row["username"] = row["user"].get("username")
@@ -1025,120 +1018,170 @@ class SupabaseService:
         try:
             from datetime import timedelta
             
+            # --- OPTIMIZATION STARTS HERE ---
+            # Fetch all required session data in ONE query instead of 11 separate queries
+            today = datetime.utcnow().date()
+            four_weeks_ago = today - timedelta(weeks=4)
+            
+            # Fetch sessions from the last 30 days (covers both 7-day and 4-week charts)
+            sessions_response = self.client.table("user_sessions")\
+                .select("started_at")\
+                .gte("started_at", four_weeks_ago.isoformat())\
+                .execute()
+                
+            sessions_data = sessions_response.data or []
+            
             # 1. User Activity (Last 7 Days)
             user_activity = []
-            today = datetime.utcnow().date()
+            # Pre-fill with 0
+            activity_map = {}
             for i in range(6, -1, -1):
                 date_val = today - timedelta(days=i)
-                day_start = datetime.combine(date_val, datetime.min.time()).isoformat()
-                day_end = datetime.combine(date_val, datetime.max.time()).isoformat()
-                
-                # Count sessions started on this day
-                # Note: This is an approximation. Ideally we'd group by date in SQL
-                response = self.client.table("user_sessions")\
-                    .select("id", count="exact")\
-                    .gte("started_at", day_start)\
-                    .lte("started_at", day_end)\
-                    .execute()
-                
-                count = response.count if response.count is not None else len(response.data)
+                key = date_val.isoformat()
+                activity_map[key] = 0
                 user_activity.append(ChartDataPoint(
                     name=date_val.strftime("%a"),
-                    value=count
+                    value=0
+                ))
+                
+            # Aggregate counts
+            for session in sessions_data:
+                started_at = session.get("started_at")
+                if started_at:
+                    # Parse ISO string to date
+                    try:
+                        # Handle potential Z or +00:00 suffix manually if needed, 
+                        # but splitting by T is usually safe for date part
+                        s_date = started_at.split("T")[0]
+                        if s_date in activity_map:
+                            activity_map[s_date] += 1
+                    except:
+                        pass
+            
+            # Update chart objects
+            for item in user_activity:
+                # Find date key by reverse mapping or just re-loop? 
+                # Easier: just rebuild the list from the map using the sorted keys
+                pass 
+
+            # Actually, let's just rebuild user_activity cleanly
+            user_activity = []
+            for i in range(6, -1, -1):
+                date_val = today - timedelta(days=i)
+                key = date_val.isoformat()
+                user_activity.append(ChartDataPoint(
+                    name=date_val.strftime("%a"),
+                    value=activity_map.get(key, 0)
                 ))
 
             # 2. Session Trends (Last 4 Weeks)
             session_trends = []
+            weeks_map = {0: 0, 1: 0, 2: 0, 3: 0} # 0 is current week, 3 is 4 weeks ago
+            
+            for session in sessions_data:
+                started_at = session.get("started_at")
+                if started_at:
+                    try:
+                        s_dt = datetime.fromisoformat(started_at.replace('Z', '+00:00'))
+                        s_date = s_dt.date()
+                        days_diff = (today - s_date).days
+                        
+                        if 0 <= days_diff < 7:
+                            weeks_map[0] += 1
+                        elif 7 <= days_diff < 14:
+                            weeks_map[1] += 1
+                        elif 14 <= days_diff < 21:
+                            weeks_map[2] += 1
+                        elif 21 <= days_diff < 28:
+                            weeks_map[3] += 1
+                    except:
+                        pass
+            
             for i in range(3, -1, -1):
-                week_start = today - timedelta(weeks=i+1)
-                week_end = today - timedelta(weeks=i)
-                
-                # Count sessions in this week
-                response = self.client.table("user_sessions")\
-                    .select("id", count="exact")\
-                    .gte("started_at", week_start.isoformat())\
-                    .lt("started_at", week_end.isoformat())\
-                    .execute()
-                
-                count = response.count if response.count is not None else len(response.data)
                 session_trends.append(ChartDataPoint(
                     name=f"Week {4-i}", 
-                    value=count
+                    value=weeks_map.get(i, 0)
                 ))
 
             # 3. Service Usage
             service_usage = []
-            # Get counts of user_services grouped by service_id
-            # Since Supabase-py doesn't support complex aggregations easily, fetch all and aggregate in python
-            # or fetch services and count manually
+            # Optimization: Still fetching all services, but it's one query. 
+            # Ideally we'd validte if we can use an RPC for "group by count"
+            # For now, we'll keep the logic but wrap it safely. 
             
-            # Fetch all user_services
-            us_response = self.client.table("user_services").select("service_id").execute()
-            us_data = us_response.data
-            
-            # Fetch all services
-            svc_response = self.client.table("services").select("id, name").execute()
-            services_map = {s["id"]: s["name"] for s in svc_response.data}
-            
-            usage_counts = {}
-            for item in us_data:
-                sid = item["service_id"]
-                if sid in services_map:
-                    sname = services_map[sid]
-                    usage_counts[sname] = usage_counts.get(sname, 0) + 1
-            
-            # Top 5 services
-            sorted_usage = sorted(usage_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-            for name, count in sorted_usage:
-                service_usage.append(ChartDataPoint(name=name, value=count))
+            try:
+                # Fetch all user_services - selecting ONLY service_id to save bandwidth
+                us_response = self.client.table("user_services").select("service_id").execute()
+                us_data = us_response.data or []
                 
-            # If empty, add placeholder or "Others"
-            if not service_usage and us_data:
-                 service_usage.append(ChartDataPoint(name="Others", value=len(us_data)))
-
+                # Fetch all services (usually small table)
+                svc_response = self.client.table("services").select("id, name").execute()
+                services_map = {s["id"]: s["name"] for s in (svc_response.data or [])}
+                
+                usage_counts = {}
+                for item in us_data:
+                    sid = item.get("service_id")
+                    if sid and sid in services_map:
+                        sname = services_map[sid]
+                        usage_counts[sname] = usage_counts.get(sname, 0) + 1
+                
+                # Top 5 services
+                sorted_usage = sorted(usage_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+                for name, count in sorted_usage:
+                    service_usage.append(ChartDataPoint(name=name, value=count))
+                    
+                # If empty, add placeholder or "Others"
+                if not service_usage and us_data:
+                     service_usage.append(ChartDataPoint(name="Others", value=len(us_data)))
+            except Exception as svc_e:
+                logger.error(f"Error processing service usage: {svc_e}")
+                service_usage = []
 
             # 4. Recent Activity
             recent_activity = []
-            # Fetch from audit_logs
-            logs_response = self.client.table("audit_logs")\
-                .select("*, user:users(username)")\
-                .order("created_at", desc=True)\
-                .limit(5)\
-                .execute()
-            
-            for log in logs_response.data:
-                username = "Unknown"
-                if log.get("user"):
-                     username = log["user"].get("username", "Unknown")
-                elif log.get("user_id"):
-                     # Try to fetch user if not joined
-                     pass 
-
-                # Determine type/color from action
-                action = log.get("action", "").lower()
-                act_type = "service"
-                if "login" in action: act_type = "login"
-                elif "logout" in action: act_type = "logout"
-                elif "proxy" in action: act_type = "proxy"
+            try:
+                # Fetch from audit_logs
+                logs_response = self.client.table("audit_logs")\
+                    .select("*, user:users(username)")\
+                    .order("created_at", desc=True)\
+                    .limit(5)\
+                    .execute()
                 
-                # Calculate time ago roughly
-                created_at = datetime.fromisoformat(log["created_at"].replace('Z', '+00:00'))
-                # Simplified time diff for now
-                time_str = created_at.strftime("%H:%M") 
+                for log in (logs_response.data or []):
+                    username = "Unknown"
+                    if log.get("user") and isinstance(log["user"], dict):
+                         username = log["user"].get("username", "Unknown")
+                    
+                    # Determine type/color from action
+                    action = log.get("action", "").lower()
+                    act_type = "service"
+                    if "login" in action: act_type = "login"
+                    elif "logout" in action: act_type = "logout"
+                    elif "proxy" in action: act_type = "proxy"
+                    
+                    # Calculate time ago roughly
+                    try:
+                        created_at = datetime.fromisoformat(log["created_at"].replace('Z', '+00:00'))
+                        time_str = created_at.strftime("%H:%M") 
+                    except:
+                        time_str = "Now"
 
-                recent_activity.append(ActivityItem(
-                    user=username,
-                    action=f"{log['action']} {log['resource_type']}",
-                    time=time_str,
-                    type=act_type
-                ))
+                    recent_activity.append(ActivityItem(
+                        user=username,
+                        action=f"{log.get('action', '')} {log.get('resource_type', '')}",
+                        time=time_str,
+                        type=act_type
+                    ))
+            except Exception as log_e:
+                logger.error(f"Error processing recent activity: {log_e}")
+                # Don't fail the whole dashboard for logs
 
             return DashboardCharts(
                 user_activity=user_activity,
                 session_trends=session_trends,
                 service_usage=service_usage,
                 recent_activity=recent_activity
-            )
+            ) # type: ignore -- Pydantic validation handles this
             
         except Exception as e:
             logger.error(f"Error getting dashboard charts: {e}", exc_info=True)

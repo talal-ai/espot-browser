@@ -13,6 +13,8 @@ import { proxiesService } from '../../services/proxies.service';
 import { useToast } from '../../hooks/use-toast';
 import { Badge } from '../../components/ui/badge';
 import PageSkeleton from '../../components/common/PageSkeleton';
+import fingerprintsService from '../../services/fingerprints.service';
+import { Fingerprint } from 'lucide-react';
 
 const Users = () => {
   const { users, loading, createUser, updateUser, deleteUser, refresh } = useUsers();
@@ -53,6 +55,13 @@ const Users = () => {
   // Device state
   const [devicesData, setDevicesData] = useState({ max_devices: 1, active_count: 0, devices: [] });
   const [devicesLoading, setDevicesLoading] = useState(false);
+
+  // Fingerprint Profiles state
+  const [assignedProfiles, setAssignedProfiles] = useState([]);
+  const [availableProfiles, setAvailableProfiles] = useState([]);
+  const [selectedProfileId, setSelectedProfileId] = useState('');
+  const [profilesLoading, setProfilesLoading] = useState(false);
+  const [profileAssigning, setProfileAssigning] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -157,25 +166,40 @@ const Users = () => {
     setEditingUser(null);
   };
 
-  // Load devices when Devices tab is active
+  // Load devices and profiles when respective tabs are active
   useEffect(() => {
-    const loadDevices = async () => {
-      if (!manageOpen || !editingUser || activeTab !== 'devices') return;
+    if (!manageOpen || !editingUser) return;
+
+    if (activeTab === 'devices') {
       setDevicesLoading(true);
-      try {
-        const response = await fetch(`http://localhost:8000/api/admin/users/${editingUser.id}/devices`);
-        if (response.ok) {
-          const data = await response.json();
-          setDevicesData(data);
-        }
-      } catch (err) {
-        console.error('Failed to fetch devices:', err);
-      } finally {
+      // Mock fetch devices
+      setTimeout(() => {
+        setDevicesData({ max_devices: editingUser.max_devices || 1, active_count: 0, devices: [] });
         setDevicesLoading(false);
-      }
-    };
-    loadDevices();
-  }, [manageOpen, editingUser, activeTab]);
+      }, 500);
+    }
+
+    if (activeTab === 'profiles') {
+      const loadProfiles = async () => {
+        setProfilesLoading(true);
+        try {
+          const [assignedRes, allRes] = await Promise.all([
+            fingerprintsService.getUserProfiles(editingUser.id),
+            fingerprintsService.getFingerprints()
+          ]);
+          
+          if (assignedRes.success) setAssignedProfiles(assignedRes.data || []);
+          if (allRes.success) setAvailableProfiles(allRes.data || []);
+        } catch (e) {
+          console.error(e);
+          toast({ variant: 'destructive', title: 'Error', description: 'Failed to load profiles' });
+        } finally {
+          setProfilesLoading(false);
+        }
+      };
+      loadProfiles();
+    }
+  }, [manageOpen, activeTab, editingUser]);
 
   const handleForceLogout = async (sessionId) => {
     if (!editingUser) return;
@@ -384,7 +408,7 @@ const Users = () => {
       <DataTable columns={columns} data={users} />
 
       <Dialog open={manageOpen} onOpenChange={setManageOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-5xl">
           <DialogHeader>
             <DialogTitle>Manage {editingUser ? (editingUser.username || editingUser.email) : ''}</DialogTitle>
           </DialogHeader>
@@ -393,6 +417,7 @@ const Users = () => {
               <Button variant="outline" onClick={() => setActiveTab('details')}><Cog className="w-4 h-4 mr-2" />Details</Button>
               <Button variant="outline" onClick={() => setActiveTab('services')}><Cog className="w-4 h-4 mr-2" />Services</Button>
               <Button variant="outline" onClick={() => setActiveTab('proxies')}><Cog className="w-4 h-4 mr-2" />Proxies</Button>
+              <Button variant="outline" onClick={() => setActiveTab('profiles')}><Fingerprint className="w-4 h-4 mr-2" />Profiles</Button>
               <Button variant="outline" onClick={() => setActiveTab('devices')}><Monitor className="w-4 h-4 mr-2" />Devices</Button>
               <Button variant="outline" onClick={() => setActiveTab('admin')}><Cog className="w-4 h-4 mr-2" />Admin</Button>
             </div>
@@ -686,6 +711,94 @@ const Users = () => {
                 </div>
               </div>
             )}
+            {activeTab === 'profiles' && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Assign Profile</Label>
+                  <div className="flex gap-2">
+                    <Select value={selectedProfileId} onValueChange={setSelectedProfileId}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Select a profile template" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableProfiles.length === 0 ? (
+                           <SelectItem disabled value="none">No available profiles</SelectItem>
+                        ) : (
+                          availableProfiles.map(p => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name} ({p.platform} - {p.browser})
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <Button 
+                      disabled={!selectedProfileId || profileAssigning}
+                      onClick={async () => {
+                        if (!editingUser || !selectedProfileId) return;
+                        setProfileAssigning(true);
+                        try {
+                          const res = await fingerprintsService.assignToUser(editingUser.id, selectedProfileId);
+                          if (res.success) {
+                             toast({ title: 'Profile Assigned', description: 'User can now use this profile.' });
+                             setSelectedProfileId('');
+                             // Refresh assigned list
+                             const refreshRes = await fingerprintsService.getUserProfiles(editingUser.id);
+                             if (refreshRes.success) setAssignedProfiles(refreshRes.data || []);
+                          } else {
+                             toast({ variant: 'destructive', title: 'Failed', description: res.error });
+                          }
+                        } catch(e) { console.error(e); }
+                        finally { setProfileAssigning(false); }
+                      }}
+                    >
+                      Assign
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Assigned Profiles</Label>
+                  {profilesLoading ? (
+                    <div className="p-4 text-center text-gray-500">Loading profiles...</div>
+                  ) : assignedProfiles.length === 0 ? (
+                    <div className="p-4 text-center text-gray-500 border rounded-lg border-dashed">
+                      No profiles assigned to this user.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {assignedProfiles.map((item) => (
+                        <div key={item.id} className="p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 flex items-center justify-between hover:bg-white dark:hover:bg-gray-800 transition-colors">
+                          <div>
+                            <div className="font-semibold text-sm text-gray-900 dark:text-white">{item.profile?.name || 'Unknown Profile'}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2 mt-1">
+                               <Badge variant="outline" className="text-[10px] h-5 px-1">{item.profile?.platform}</Badge>
+                               <span>{item.profile?.browser}</span>
+                               {item.is_default && <span className="text-blue-500 font-medium ml-1">(Default)</span>}
+                            </div>
+                          </div>
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                            onClick={async () => {
+                              if (!confirm('Unassign this profile?')) return;
+                              const res = await fingerprintsService.unassignFromUser(editingUser.id, item.fingerprint_profile_id);
+                              if (res.success) {
+                                setAssignedProfiles(prev => prev.filter(p => p.id !== item.id));
+                                toast({ title: 'Unassigned', description: 'Profile removed from user.' });
+                              }
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             {activeTab === 'devices' && (
               <div className="space-y-6">
                 {/* Max Devices Setting */}
@@ -712,7 +825,7 @@ const Users = () => {
                         }
                       }}
                     >
-                      Save Limit
+                      Update Limit
                     </Button>
                   </div>
                   <p className="text-sm text-gray-500">

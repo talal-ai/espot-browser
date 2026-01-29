@@ -23,7 +23,7 @@ let mainWindow: BrowserWindow | null = null;
 // Create the main window
 function createMainWindow() {
   // Resolve dev icon for Windows/Linux from project assets (match packaged icon names)
-  const iconFileName = process.platform === 'win32' ? 'espot-logo.ico' : 'icon.png';
+  const iconFileName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
   const devIconPath = path.join(process.cwd(), 'assets', iconFileName);
 
   mainWindow = new BrowserWindow({

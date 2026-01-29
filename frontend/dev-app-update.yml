@@ -1,0 +1,17 @@
+# This file enables testing auto-updates in development mode.
+# electron-updater reads this file when running in dev mode.
+#
+# OPTION 1: Use a local HTTP server for testing
+# Run: npx http-server ./release -p 8080
+# Then use:
+# provider: generic
+# url: http://localhost:8080
+
+# OPTION 2: Point directly to GitHub releases (requires real release)
+provider: github
+owner: talal-ai
+repo: espot-browser
+
+# OPTION 3: Use a local file (YAML format, testing only)
+# provider: generic
+# url: file:///C:/Users/heyyt/Downloads/github/espot-browser/frontend/release/

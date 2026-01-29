@@ -5,7 +5,7 @@ module.exports = {
   packagerConfig: {
     asar: true,
     // Use branded app icon instead of the Electron default
-    icon: './assets/espot-logo',
+    icon: './assets/icon',
     // Ensure executable metadata shows the right product/publisher in Task Manager
     name: 'ESPOT Browser',
     executableName: 'ESPOT Browser',

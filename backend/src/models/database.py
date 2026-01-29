@@ -221,6 +221,8 @@ class SessionBase(BaseModel):
     proxy_id: Optional[str] = None
     ip_address: Optional[str] = None
     user_agent: Optional[str] = None
+    device_id: Optional[str] = None
+    device_info: Optional[Dict[str, Any]] = None
     anonymity_level: Optional[int] = Field(None, ge=1, le=10)
 
 class SessionCreate(SessionBase):

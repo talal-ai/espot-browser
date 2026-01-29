@@ -22,6 +22,7 @@ const api = {
   fingerprint: {
     setActive: (profile: any, userId: string) => ipcRenderer.invoke('fingerprint:setActive', profile, userId),
     getActive: () => ipcRenderer.invoke('fingerprint:getActive'),
+    clear: () => ipcRenderer.invoke('fingerprint:clear'),
   },
 
   // Browser launch with fingerprint spoofing + Google cookie injection
@@ -72,16 +73,54 @@ const api = {
   },
 
   // Auto-Update API
-  updates: {
-    check: () => ipcRenderer.invoke('updates:check'),
-    download: () => ipcRenderer.invoke('updates:download'),
-    install: () => ipcRenderer.invoke('updates:install'),
-    getStatus: () => ipcRenderer.invoke('updates:getStatus'),
-    onStatusChange: (callback: (status: any) => void) => {
-      const handler = (_event: any, status: any) => callback(status);
-      ipcRenderer.on('update-status', handler);
-      return () => ipcRenderer.removeListener('update-status', handler);
+  updater: {
+    checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+    quitAndInstall: () => ipcRenderer.invoke('updater:quit-and-install'),
+    
+    onStatusChange: (callback: (status: string) => void) => {
+      const listener = (_: any, status: string) => callback(status);
+      ipcRenderer.on('updater:status', listener);
+      return () => ipcRenderer.removeListener('updater:status', listener);
     },
+    
+    onUpdateAvailable: (callback: (info: any) => void) => {
+      const listener = (_: any, info: any) => callback(info);
+      ipcRenderer.on('updater:available', listener);
+      return () => ipcRenderer.removeListener('updater:available', listener);
+    },
+    
+    onUpdateNotAvailable: (callback: (info: any) => void) => {
+      const listener = (_: any, info: any) => callback(info);
+      ipcRenderer.on('updater:not-available', listener);
+      return () => ipcRenderer.removeListener('updater:not-available', listener);
+    },
+    
+    onDownloadProgress: (callback: (progress: any) => void) => {
+      const listener = (_: any, progress: any) => callback(progress);
+      ipcRenderer.on('updater:download-progress', listener);
+      return () => ipcRenderer.removeListener('updater:download-progress', listener);
+    },
+    
+    onUpdateDownloaded: (callback: (info: any) => void) => {
+      const listener = (_: any, info: any) => callback(info);
+      ipcRenderer.on('updater:downloaded', listener);
+      return () => ipcRenderer.removeListener('updater:downloaded', listener);
+    },
+    
+    onError: (callback: (error: string) => void) => {
+      const listener = (_: any, error: string) => callback(error);
+      ipcRenderer.on('updater:error', listener);
+      return () => ipcRenderer.removeListener('updater:error', listener);
+    },
+    
+    removeAllListeners: () => {
+      ipcRenderer.removeAllListeners('updater:status');
+      ipcRenderer.removeAllListeners('updater:available');
+      ipcRenderer.removeAllListeners('updater:not-available');
+      ipcRenderer.removeAllListeners('updater:download-progress');
+      ipcRenderer.removeAllListeners('updater:downloaded');
+      ipcRenderer.removeAllListeners('updater:error');
+    }
   },
 };
 
@@ -140,18 +179,15 @@ export interface ElectronAPI {
       Promise<{ success: boolean; message?: string; error?: string }>;
   };
 
-  updates: {
-    check: () => Promise<{ success: boolean; error?: string }>;
-    download: () => Promise<{ success: boolean; error?: string }>;
-    install: () => Promise<{ success: boolean; error?: string }>;
-    getStatus: () => Promise<{
-      checking: boolean;
-      available: boolean;
-      downloaded: boolean;
-      progress: number;
-      version: string | null;
-      error: string | null;
-    }>;
-    onStatusChange: (callback: (status: any) => void) => () => void;
+  updater: {
+    checkForUpdates: () => Promise<any>;
+    quitAndInstall: () => Promise<void>;
+    onStatusChange: (callback: (status: string) => void) => () => void;
+    onUpdateAvailable: (callback: (info: any) => void) => () => void;
+    onUpdateNotAvailable: (callback: (info: any) => void) => () => void;
+    onDownloadProgress: (callback: (progress: any) => void) => () => void;
+    onUpdateDownloaded: (callback: (info: any) => void) => () => void;
+    onError: (callback: (error: string) => void) => () => void;
+    removeAllListeners: () => void;
   };
 }

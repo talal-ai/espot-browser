@@ -9,6 +9,7 @@
  */
 
 import { supabase } from '../lib/supabase';
+import { getDeviceFingerprint, DeviceFingerprint } from '../utils/device-fingerprint';
 
 /**
  * Get the redirect URL for OAuth callbacks.
@@ -60,6 +61,19 @@ export const authService = {
         console.log('[AuthService] Attempting login for:', emailOrUsername);
 
         try {
+            // Get device fingerprint with robust fallback
+            let deviceFingerprint: DeviceFingerprint = { visitorId: 'unknown-' + Math.random().toString(36).slice(2), components: {} };
+            try {
+                const fp = await getDeviceFingerprint();
+                if (fp && fp.visitorId) {
+                    deviceFingerprint = fp;
+                }
+            } catch (e) {
+                console.warn('[AuthService] Failed to get device fingerprint, using fallback:', e);
+            }
+
+            console.log('[AuthService] Login payload device_id:', deviceFingerprint.visitorId);
+
             // Use custom backend API endpoint for email/password login
             const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/login`, {
                 method: 'POST',
@@ -69,6 +83,8 @@ export const authService = {
                 body: JSON.stringify({
                     emailOrUsername,
                     password,
+                    device_id: deviceFingerprint?.visitorId,
+                    device_info: deviceFingerprint?.components
                 }),
             });
 
@@ -165,11 +181,11 @@ export const authService = {
      * Optimized for instant UI response - clears local state first,
      * then does network calls in background (fire-and-forget)
      */
-    async logout() {
+    async logout(token?: string | null) {
         console.log('[AuthService] Signing out...');
         
         // 1. Clear local storage IMMEDIATELY for instant UI response
-        const token = localStorage.getItem("auth_token");
+        const authToken = token || localStorage.getItem("auth_token");
         localStorage.removeItem("auth_token");
         
         // 2. Sign out from Supabase FIRST (faster, local-ish operation)
@@ -182,7 +198,7 @@ export const authService = {
         }
         
         // 3. Backend logout in background (fire-and-forget, don't block UI)
-        if (token) {
+        if (authToken) {
             fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/logout`, {
                 method: 'POST',
                 headers: {

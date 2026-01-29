@@ -23,6 +23,8 @@ security = HTTPBearer(auto_error=False)
 class LoginRequest(BaseModel):
     emailOrUsername: str
     password: str
+    device_id: Optional[str] = None
+    device_info: Optional[dict] = None
 
 class SignupRequest(BaseModel):
     email: EmailStr
@@ -250,6 +252,8 @@ async def login(request: LoginRequest, http_request: Request):
                 session_token=token_hash,
                 ip_address=ip_addr,
                 user_agent=user_agent,
+                device_id=request.device_id,
+                device_info=request.device_info
             )
             await supabase_service.create_session(session_payload)
         except Exception as se:

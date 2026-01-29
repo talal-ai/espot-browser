@@ -227,6 +227,21 @@ const UserSettings = () => {
                   </div>
                   <Switch checked={soundAlerts} onCheckedChange={setSoundAlerts} />
                 </div>
+
+                <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                      <SettingsIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">Software Updates</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Keep the app up to date</p>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => window.electron?.updater?.checkForUpdates()}>
+                    Check for Updates
+                  </Button>
+                </div>
               </div>
             </div>
           </GlassCard>

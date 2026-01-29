@@ -43,6 +43,8 @@ function normalizeSession(raw: any): Session {
     page_visits: raw.pages_visited ?? null,
     data_transferred: raw.data_transferred ?? null,
     notes: raw.notes ?? null,
+    device_id: raw.device_id ?? null,
+    device_info: raw.device_info ?? null,
   } as Session;
 }
 

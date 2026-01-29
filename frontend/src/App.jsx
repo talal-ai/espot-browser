@@ -8,7 +8,7 @@ import MainLayout from "./components/layout/MainLayout";
 import { Toaster } from "./components/ui/toaster";
 import ErrorBoundary from "./components/common/ErrorBoundary";
 import BrowserShell from "./components/browser/BrowserShell";
-import UpdateNotification from "./components/UpdateNotification";
+import UpdateNotification from "./components/common/UpdateNotification";
 
 // Pages
 import Auth from "./pages/Auth";
@@ -66,6 +66,7 @@ function App() {
       <ThemeProvider>
         <AuthProvider>
           <BrowserProvider>
+            <UpdateNotification />
             <div className="App">
               <Router>
                 <Routes>

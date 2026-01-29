@@ -249,6 +249,9 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
+    // Get token before clearing so we can send it to backend
+    const token = localStorage.getItem("auth_token");
+
     // Clear state IMMEDIATELY for instant UI response
     const userId = user?.id;
     setUser(null);
@@ -258,7 +261,7 @@ export const AuthProvider = ({ children }) => {
 
     // Call auth service logout (also optimized for speed)
     try {
-      await authService.logout();
+      await authService.logout(token);
     } catch (error) {
       console.error("Logout error:", error);
     }
