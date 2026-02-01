@@ -1,5 +1,6 @@
 import React from 'react';
-import brandLogo from '../../../assets/icon.png';
+// Use public folder asset since src/assets was cleaned up
+const brandLogo = '/web-app-manifest-512x512.png';
 
 // Logo component centralizes logo usage across the app to keep it consistent.
 // It loads from the shared branded asset pack so production builds always show ESPOT art.

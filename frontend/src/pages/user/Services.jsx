@@ -81,11 +81,12 @@ const UserServices = () => {
     try {
       const credRes = await servicesService.getLaunchCredentials(service.id);
 
-      if (!credRes.success) {
-        throw new Error(credRes.error?.message || 'Failed to get credentials');
-      }
-
-      const credentials = credRes.data;
+      // If credentials API fails or returns no data, it means service has no credentials
+      // This is OKAY - admin chose to disable credentials, so launch without them
+      const credentials = credRes.success && credRes.data ? credRes.data : {
+        username: '',
+        password: ''
+      };
 
       if (window.electronAPI?.service?.launch) {
         const result = await window.electronAPI.service.launch({

@@ -16,16 +16,30 @@ const API_BASE_URL = process.env.API_BASE_URL ?? (isDev ? 'http://localhost:8000
 
 // Brand identity
 const APP_NAME = 'ESPOT Browser';
+const APP_ID = 'com.espot.browser';
+
+// Ensure OS-level identity is branded before windows are created
+if (app.setName) app.setName(APP_NAME);
+if (app.setAppUserModelId) app.setAppUserModelId(APP_ID);
+
+// Robust asset path resolution helper
+const getAssetPath = (...paths: string[]): string => {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'assets', ...paths)
+    : path.join(process.cwd(), 'assets', ...paths);
+};
+
+// Global app icon for all windows
+const iconFileName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+const appIconPath = getAssetPath(iconFileName);
+const rawAppIcon = nativeImage.createFromPath(appIconPath);
+const windowIcon = rawAppIcon.isEmpty() ? undefined : rawAppIcon;
 
 // Global reference to mainWindow to prevent garbage collection
 let mainWindow: BrowserWindow | null = null;
 
 // Create the main window
 function createMainWindow() {
-  // Resolve dev icon for Windows/Linux from project assets (match packaged icon names)
-  const iconFileName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
-  const devIconPath = path.join(process.cwd(), 'assets', iconFileName);
-
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -35,7 +49,7 @@ function createMainWindow() {
     show: false,
     frame: true,
     titleBarStyle: 'default',
-    icon: isDev ? (nativeImage.createFromPath(devIconPath) || undefined) : undefined,
+    icon: windowIcon,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -138,6 +152,7 @@ function createMainWindow() {
           width: 1200,
           height: 800,
           show: true,
+          icon: windowIcon,
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -158,6 +173,7 @@ function createMainWindow() {
           width: 1200,
           height: 800,
           show: true,
+          icon: windowIcon,
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -184,6 +200,7 @@ function createMainWindow() {
       width: 1200,
       height: 800,
       show: true,
+      icon: windowIcon,
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -301,6 +318,7 @@ function setupIpcHandlers() {
       width: 1200,
       height: 800,
       show: true,
+      icon: windowIcon,
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,

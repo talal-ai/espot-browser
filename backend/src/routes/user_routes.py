@@ -93,10 +93,15 @@ async def get_service_launch_credentials(
         # Get credential for this service
         credential = await supabase_service.get_credential_by_service(service_id)
         if not credential:
-            raise HTTPException(
-                status_code=404, 
-                detail="No credentials configured for this service"
-            )
+            # Return empty credentials instead of 404
+            # This allows the frontend to launch the service without credentials silently
+            return {
+                "service_id": service_id,
+                "service_name": service.get("name"),
+                "service_url": service.get("url"),
+                "username": "",
+                "password": ""
+            }
         
         # Decrypt password
         try:

@@ -52,7 +52,7 @@ if (app.setAppUserModelId) app.setAppUserModelId(APP_ID);
 let mainWindow: BrowserWindow | null = null;
 
 // Global app icon for all windows
-const iconFileName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+const iconFileName = process.platform === 'win32' ? 'espot-logo.ico' : 'icon.png';
 const appIconPath = path.join(__dirname, '..', 'assets', iconFileName);
 console.log('[ESPOT] Loading app icon from:', appIconPath);
 const rawAppIcon = nativeImage.createFromPath(appIconPath);
@@ -138,7 +138,7 @@ function createMainWindow() {
     frame: true,
     titleBarStyle: 'default',
     icon: windowIcon,
-    fullscreen: true,
+    fullscreen: false,
     fullscreenable: true,
     webPreferences: {
       nodeIntegration: false,
@@ -180,6 +180,7 @@ function createMainWindow() {
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
+    mainWindow?.maximize();
   });
 
   // Log renderer console messages

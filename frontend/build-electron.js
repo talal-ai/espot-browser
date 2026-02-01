@@ -1,6 +1,18 @@
+import { cp, mkdir, rm } from 'node:fs/promises';
+import path from 'node:path';
 import esbuild from 'esbuild';
 
 const isDev = process.argv.includes('--watch');
+
+const assetsSourcePath = path.resolve('assets');
+const distAssetsPath = path.resolve('dist-electron', 'assets');
+
+async function syncElectronAssets() {
+  await rm(distAssetsPath, { recursive: true, force: true });
+  await mkdir(distAssetsPath, { recursive: true });
+  await cp(assetsSourcePath, distAssetsPath, { recursive: true, force: true });
+  console.log('🧱 Copied Electron assets into dist-electron/assets');
+}
 
 const config = {
   entryPoints: {
@@ -17,6 +29,8 @@ const config = {
   minify: !isDev,
   logLevel: 'info',
 };
+
+await syncElectronAssets();
 
 if (isDev) {
   const ctx = await esbuild.context(config);

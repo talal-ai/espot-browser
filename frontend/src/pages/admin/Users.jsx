@@ -171,12 +171,28 @@ const Users = () => {
     if (!manageOpen || !editingUser) return;
 
     if (activeTab === 'devices') {
-      setDevicesLoading(true);
-      // Mock fetch devices
-      setTimeout(() => {
-        setDevicesData({ max_devices: editingUser.max_devices || 1, active_count: 0, devices: [] });
-        setDevicesLoading(false);
-      }, 500);
+      const loadDevices = async () => {
+        setDevicesLoading(true);
+        try {
+          // Fetch real devices/sessions from backend
+          const response = await fetch(`http://localhost:8000/api/admin/users/${editingUser.id}/devices`);
+          if (response.ok) {
+            const data = await response.json();
+            setDevicesData(data);
+          } else {
+            console.error('Failed to fetch devices:', response.statusText);
+            toast({ variant: 'destructive', title: 'Failed to load devices' });
+            setDevicesData({ max_devices: editingUser.max_devices || 1, active_count: 0, devices: [] });
+          }
+        } catch (error) {
+          console.error('Error fetching devices:', error);
+          toast({ variant: 'destructive', title: 'Error loading devices' });
+          setDevicesData({ max_devices: editingUser.max_devices || 1, active_count: 0, devices: [] });
+        } finally {
+          setDevicesLoading(false);
+        }
+      };
+      loadDevices();
     }
 
     if (activeTab === 'profiles') {
