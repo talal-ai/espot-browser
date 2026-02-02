@@ -5,7 +5,7 @@ import { FingerprintProfile, createSpoofedWindow, applySpoofingProfile } from '.
 import { generateModernAutofillScript } from './autofill-generator';
 import axios from 'axios';
 
-const APP_ID = 'com.espot.browser';
+const APP_ID = 'com.espot.browser.v2';
 const APP_NAME = 'ESPOT Browser';
 
 // API Base URL for fetching profiles
@@ -52,7 +52,7 @@ if (app.setAppUserModelId) app.setAppUserModelId(APP_ID);
 let mainWindow: BrowserWindow | null = null;
 
 // Global app icon for all windows
-const iconFileName = process.platform === 'win32' ? 'espot-logo.ico' : 'icon.png';
+const iconFileName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
 const appIconPath = path.join(__dirname, '..', 'assets', iconFileName);
 console.log('[ESPOT] Loading app icon from:', appIconPath);
 const rawAppIcon = nativeImage.createFromPath(appIconPath);
@@ -137,7 +137,7 @@ function createMainWindow() {
     show: false,
     frame: true,
     titleBarStyle: 'default',
-    icon: windowIcon,
+    icon: appIconPath,
     fullscreen: false,
     fullscreenable: true,
     webPreferences: {
@@ -228,7 +228,7 @@ function createMainWindow() {
             width: 600,
             height: 700,
             show: true,
-            icon: windowIcon,
+            icon: appIconPath,
             webPreferences: {
               nodeIntegration: false,
               contextIsolation: true,
@@ -279,7 +279,7 @@ function createMainWindow() {
             width: 1200,
             height: 800,
             show: true,
-            icon: windowIcon,
+            icon: appIconPath,
             webPreferences: {
               nodeIntegration: false,
               contextIsolation: true,
@@ -299,7 +299,7 @@ function createMainWindow() {
             width: 1200,
             height: 800,
             show: true,
-            icon: windowIcon,
+            icon: appIconPath,
             webPreferences: {
               nodeIntegration: false,
               contextIsolation: true,
@@ -530,7 +530,7 @@ function setupIpcHandlers() {
       width: 1200,
       height: 800,
       show: true,
-      icon: windowIcon,
+      icon: appIconPath,
       webPreferences,
     });
     

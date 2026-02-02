@@ -47,7 +47,7 @@ def create_icon_from_png(source_path: str, output_dir: str) -> dict:
     # Open source image
     try:
         img = Image.open(source_path)
-        print(f"✓ Source image loaded: {img.size}x{img.mode}")
+        print(f"[OK] Source image loaded: {img.size}x{img.mode}")
     except Exception as e:
         print(f"ERROR: Cannot load source image: {e}")
         return {}
@@ -55,7 +55,7 @@ def create_icon_from_png(source_path: str, output_dir: str) -> dict:
     # Convert to RGBA if needed (for transparency support)
     if img.mode != 'RGBA':
         img = img.convert('RGBA')
-        print("✓ Converted to RGBA (with transparency)")
+        print("[OK] Converted to RGBA (with transparency)")
     
     # Define all required sizes for Windows icons
     # The order matters - largest first for better quality scaling
@@ -75,7 +75,7 @@ def create_icon_from_png(source_path: str, output_dir: str) -> dict:
             resized = add_background_if_needed(resized, size)
         
         resized.save(output_path, 'PNG', optimize=True)
-        print(f"  ✓ {size}x{size:>3} -> {output_path.name}")
+        print(f"  [OK] {size}x{size:>3} -> {output_path.name}")
         generated_files[f'png_{size}'] = str(output_path)
     
     # Create Windows ICO file with ALL sizes embedded
@@ -105,7 +105,7 @@ def create_icon_from_png(source_path: str, output_dir: str) -> dict:
         append_images=ico_images[1:]
     )
     
-    print(f"  ✓ Windows ICO -> {ico_path.name}")
+    print(f"  [OK] Windows ICO -> {ico_path.name}")
     print(f"    Embedded sizes: {', '.join(f'{s}x{s}' for s in ico_sizes)}")
     generated_files['ico'] = str(ico_path)
     
@@ -125,7 +125,7 @@ def create_icon_from_png(source_path: str, output_dir: str) -> dict:
         output_path = linux_dir / f"{size}x{size}.png"
         resized = img.resize((size, size), Image.Resampling.LANCZOS)
         resized.save(output_path, 'PNG', optimize=True)
-        print(f"  ✓ {size}x{size:>3} -> linux/{output_path.name}")
+        print(f"  [OK] {size}x{size:>3} -> linux/{output_path.name}")
     
     generated_files['linux_dir'] = str(linux_dir)
     
@@ -145,7 +145,7 @@ def create_icon_from_png(source_path: str, output_dir: str) -> dict:
         sizes=[(s, s) for s in favicon_sizes],
         append_images=favicon_images[1:]
     )
-    print(f"  ✓ Favicon -> {favicon_path.name}")
+    print(f"  [OK] Favicon -> {favicon_path.name}")
     generated_files['favicon'] = str(favicon_path)
     
     # Create high-res source copy
@@ -153,7 +153,7 @@ def create_icon_from_png(source_path: str, output_dir: str) -> dict:
     hires_path = output_dir / "icon_1024x1024.png"
     hires = img.resize((1024, 1024), Image.Resampling.LANCZOS)
     hires.save(hires_path, 'PNG', optimize=True)
-    print(f"  ✓ High-res (1024x1024) -> {hires_path.name}")
+    print(f"  [OK] High-res (1024x1024) -> {hires_path.name}")
     generated_files['hires'] = str(hires_path)
     
     # Create notification icon (white background version)
@@ -162,7 +162,7 @@ def create_icon_from_png(source_path: str, output_dir: str) -> dict:
     notif_size = 128
     notif_img = create_notification_icon(img, notif_size)
     notif_img.save(notif_path, 'PNG', optimize=True)
-    print(f"  ✓ Notification icon -> {notif_path.name}")
+    print(f"  [OK] Notification icon -> {notif_path.name}")
     generated_files['notification'] = str(notif_path)
     
     print(f"\n{'='*60}")
@@ -171,10 +171,10 @@ def create_icon_from_png(source_path: str, output_dir: str) -> dict:
     print(f"Total files generated: {len(generated_files)}")
     print(f"Output location: {output_dir.absolute()}")
     print(f"\nKey files:")
-    print(f"  • icon.ico - Windows application icon (all sizes embedded)")
-    print(f"  • icon.icns - macOS application icon")
-    print(f"  • favicon.ico - Web favicon")
-    print(f"  • icon_1024x1024.png - High-res source")
+    print(f"  - icon.ico - Windows application icon (all sizes embedded)")
+    print(f"  - icon.icns - macOS application icon")
+    print(f"  - favicon.ico - Web favicon")
+    print(f"  - icon_1024x1024.png - High-res source")
     print(f"{'='*60}\n")
     
     return generated_files
@@ -242,7 +242,7 @@ def create_icns(img: Image.Image, output_dir: Path) -> Path:
         resized = img.resize((size, size), Image.Resampling.LANCZOS)
         resized.save(output_path, 'PNG', optimize=True)
     
-    print(f"    ✓ Created icon.iconset with {len(mac_sizes)} files")
+    print(f"    [OK] Created icon.iconset with {len(mac_sizes)} files")
     print(f"    Note: To create .icns on macOS, run: iconutil -c icns icon.iconset")
     
     # Create a simple .icns by copying the 256x256 version as placeholder
@@ -250,7 +250,7 @@ def create_icns(img: Image.Image, output_dir: Path) -> Path:
     placeholder = img.resize((256, 256), Image.Resampling.LANCZOS)
     placeholder.save(icns_path, 'PNG')  # Save as PNG, will be used as fallback
     
-    print(f"    ✓ Created placeholder: {icns_path.name}")
+    print(f"    [OK] Created placeholder: {icns_path.name}")
     
     return icns_path
 
@@ -284,9 +284,9 @@ def copy_to_app_locations(generated_files: dict, frontend_dir: str):
             with open(dest, 'wb') as dst:
                 dst.write(content)
             
-            print(f"  ✓ Copied to: {dest.relative_to(frontend_path.parent)}")
+            print(f"  [OK] Copied to: {dest.relative_to(frontend_path.parent)}")
         except Exception as e:
-            print(f"  ⚠ Failed to copy to {dest}: {e}")
+            print(f"  [WARN] Failed to copy to {dest}: {e}")
     
     # Also copy PNG sizes to public folder for web use
     if 'png_192' in generated_files:
@@ -303,9 +303,9 @@ def copy_to_app_locations(generated_files: dict, frontend_dir: str):
                 with open(dst, 'wb') as d:
                     d.write(content)
             except Exception as e:
-                print(f"  ⚠ Failed to copy {src.name}: {e}")
+                print(f"  [WARN] Failed to copy {src.name}: {e}")
     
-    print("\n✓ All icon locations updated!")
+    print("\n[OK] All icon locations updated!")
     return True
 
 def verify_icon_file(ico_path: str) -> dict:
@@ -348,9 +348,9 @@ def verify_icon_file(ico_path: str) -> dict:
         missing = [s for s in critical_sizes if s not in info['sizes']]
         
         if missing:
-            print(f"  ⚠ Missing sizes: {', '.join(f'{w}x{h}' for w, h in missing)}")
+            print(f"  [WARN] Missing sizes: {', '.join(f'{w}x{h}' for w, h in missing)}")
         else:
-            print(f"  ✓ All critical Windows sizes present!")
+            print(f"  [OK] All critical Windows sizes present!")
         
         return info
     except Exception as e:
@@ -369,7 +369,7 @@ def main():
     
     # Determine paths
     script_dir = Path(__file__).parent.resolve()
-    frontend_dir = script_dir.parent / "frontend"
+    frontend_dir = script_dir.parent
     
     # Find source icon
     source_options = [

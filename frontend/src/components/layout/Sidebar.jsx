@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Users, Wifi, Monitor, Key, AppWindow, Activity, Settings, MessageCircle, Fingerprint, Shield, ShieldOff, LogOut, User } from 'lucide-react';
-import Logo from '../common/Logo';
+
 import { useAuth } from '../../contexts/AuthContext';
 import { useChatNotifications } from '../../hooks/use-chat-notifications';
 import { proxiesService } from '../../services/proxies.service';
@@ -67,7 +67,7 @@ const Sidebar = () => {
         {/* Brand header */}
         <div className="p-6">
           <div className="flex items-center gap-3">
-            <Logo size={40} className="rounded-lg shadow-sm" alt="ESPOT Browser Logo" />
+            <img src="icon1.png" width={40} height={40} className="rounded-lg shadow-sm" alt="ESPOT Browser Logo" />
             <div>
               <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-orange-500 bg-clip-text text-transparent">ESPOT</h1>
               <p className="text-xs text-gray-500 dark:text-gray-400">{isAdmin ? 'Browser Admin' : 'Browser User'}</p>

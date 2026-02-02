@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Lock, User, AlertCircle, Eye, EyeOff, Sun, Moon } from "lucide-react";
-import Logo from "../components/common/Logo";
+
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/button";
@@ -190,7 +190,7 @@ const Auth = () => {
                 className="w-16 h-16 bg-white/20 dark:bg-gray-900/20 backdrop-blur-md border border-white/30 dark:border-white/10 rounded-2xl flex items-center justify-center shadow-xl shadow-black/10 dark:shadow-black/40 ring-1 ring-white/10"
               >
                 {/* Use unified brand logo instead of a generic browser icon */}
-                <Logo size={48} alt="ESPOT Browser Logo" />
+                <img src="icon1.png" width={48} height={48} alt="ESPOT Browser Logo" />
               </motion.div>
             </div>
             <CardTitle className="text-3xl font-bold text-center bg-gradient-to-r from-orange-500 to-blue-600 bg-clip-text text-transparent font-brandHeading tracking-tight">
