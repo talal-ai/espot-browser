@@ -1197,6 +1197,7 @@ function setupIpcHandlers() {
       }
 
       // Track states
+      const shouldInjectCredentials = !!(launchData.username && launchData.password);
       let overlayRemoved = false;
       let autofillInjected = false;
       let windowShown = false;
@@ -1293,14 +1294,23 @@ function setupIpcHandlers() {
 
       // Set up event handlers BEFORE loading URL
       serviceWindow.webContents.on('dom-ready', async () => {
-        // Inject overlay immediately
-        await serviceWindow.webContents.executeJavaScript(overlayScript).catch(() => { });
+        // Inject overlay immediately ONLY if we have credentials
+        if (shouldInjectCredentials) {
+          await serviceWindow.webContents.executeJavaScript(overlayScript).catch(() => { });
 
-        // Show window ONLY after overlay is injected
-        if (!windowShown) {
-          windowShown = true;
-          serviceWindow.show();
-          console.log(`[${launchData.serviceId}] 🎨 Overlay visible, window shown`);
+          // Show window ONLY after overlay is injected
+          if (!windowShown) {
+            windowShown = true;
+            serviceWindow.show();
+            console.log(`[${launchData.serviceId}] 🎨 Overlay visible, window shown`);
+          }
+        } else {
+          // No credentials = No overlay = Show immediately
+          if (!windowShown) {
+            windowShown = true;
+            serviceWindow.show();
+            console.log(`[${launchData.serviceId}] ✅ Window shown (No credentials)`);
+          }
         }
       });
 
@@ -1311,19 +1321,25 @@ function setupIpcHandlers() {
         `).catch(() => { });
 
         // Inject autofill
-        try {
-          await serviceWindow.webContents.executeJavaScript(autofillScript);
-          autofillInjected = true;
-          console.log(`[${launchData.serviceId}] ✅ Autofill injected`);
-        } catch (e) { }
+        if (shouldInjectCredentials) {
+          try {
+            await serviceWindow.webContents.executeJavaScript(autofillScript);
+            autofillInjected = true;
+            console.log(`[${launchData.serviceId}] ✅ Autofill injected`);
+          } catch (e) { }
+        }
       });
 
-      serviceWindow.webContents.on('did-navigate', (_, url) => checkLoginSuccess(url));
+      serviceWindow.webContents.on('did-navigate', (_, url) => {
+        if (shouldInjectCredentials) checkLoginSuccess(url);
+      });
       serviceWindow.webContents.on('did-navigate-in-page', (_, url) => {
-        checkLoginSuccess(url);
-        // Re-inject autofill for multi-step logins using modern flow
-        const reinjectedScript = generateModernAutofillScript(launchData.username, launchData.password, launchData.url);
-        serviceWindow.webContents.executeJavaScript(reinjectedScript).catch(() => { });
+        if (shouldInjectCredentials) {
+          checkLoginSuccess(url);
+          // Re-inject autofill for multi-step logins using modern flow
+          const reinjectedScript = generateModernAutofillScript(launchData.username, launchData.password, launchData.url);
+          serviceWindow.webContents.executeJavaScript(reinjectedScript).catch(() => { });
+        }
       });
 
       // Load the service URL
@@ -1338,6 +1354,37 @@ function setupIpcHandlers() {
       console.error('❌ Failed to launch service:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
+  });
+
+  // ============================================================================
+  // AUTO-UPDATE HANDLERS
+  // ============================================================================
+  ipcMain.handle('updater:check', async () => {
+    // Temporarily disabled for testing
+    // if (isDev) {
+    //   return { success: false, error: 'Updates disabled in development' };
+    // }
+    
+    try {
+      await autoUpdater.checkForUpdates();
+      return { success: true };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      };
+    }
+  });
+
+  ipcMain.handle('updater:quit-and-install', () => {
+    // Temporarily disabled for testing
+    // if (isDev) {
+    //   return { success: false, error: 'Updates disabled in development' };
+    // }
+    
+    // Quit and install the update
+    autoUpdater.quitAndInstall(false, true);
+    return { success: true };
   });
 }
 
@@ -2044,82 +2091,22 @@ function applyStrictPermissions(_ses: any) {
 // AUTO-UPDATER CONFIGURATION
 // ============================================
 
-// Update status tracking
-let updateStatus: {
-  checking: boolean;
-  available: boolean;
-  downloaded: boolean;
-  progress: number;
-  version: string | null;
-  error: string | null;
-} = {
-  checking: false,
-  available: false,
-  downloaded: false,
-  progress: 0,
-  version: null,
-  error: null,
-};
-
 /**
  * Initialize auto-updater (only in production builds)
  */
 function setupAutoUpdater() {
-  if (isDev) {
-    console.log('[AUTO-UPDATE] Skipping auto-updater in development mode');
-    return;
-  }
+  // Temporarily disabled for testing
+  // if (isDev) {
+  //   console.log('[AUTO-UPDATE] Skipping auto-updater in development mode');
+  //   return;
+  // }
 
   console.log('[AUTO-UPDATE] Initializing auto-updater...');
   
   // Configure update behavior
-  autoUpdater.autoDownload = false; // Don't auto-download, let user decide
+  autoUpdater.autoDownload = true; // Auto-download updates in background
   autoUpdater.autoInstallOnAppQuit = true; // Install update when user quits app
   
-  // Log all auto-updater events
-  autoUpdater.on('checking-for-update', () => {
-    console.log('[AUTO-UPDATE] Checking for updates...');
-    updateStatus.checking = true;
-    updateStatus.error = null;
-    sendUpdateStatusToRenderer();
-  });
-
-  autoUpdater.on('update-available', (info) => {
-    console.log('[AUTO-UPDATE] Update available:', info.version);
-    updateStatus.checking = false;
-    updateStatus.available = true;
-    updateStatus.version = info.version;
-    sendUpdateStatusToRenderer();
-  });
-
-  autoUpdater.on('update-not-available', (info) => {
-    console.log('[AUTO-UPDATE] No updates available. Current version:', info.version);
-    updateStatus.checking = false;
-    updateStatus.available = false;
-    sendUpdateStatusToRenderer();
-  });
-
-  autoUpdater.on('error', (err) => {
-    console.error('[AUTO-UPDATE] Error:', err);
-    updateStatus.checking = false;
-    updateStatus.error = err.message;
-    sendUpdateStatusToRenderer();
-  });
-
-  autoUpdater.on('download-progress', (progressObj) => {
-    const logMessage = `[AUTO-UPDATE] Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}% (${progressObj.transferred}/${progressObj.total})`;
-    console.log(logMessage);
-    updateStatus.progress = Math.round(progressObj.percent);
-    sendUpdateStatusToRenderer();
-  });
-
-  autoUpdater.on('update-downloaded', (info) => {
-    console.log('[AUTO-UPDATE] Update downloaded:', info.version);
-    updateStatus.downloaded = true;
-    updateStatus.progress = 100;
-    sendUpdateStatusToRenderer();
-  });
-
   // If a local generic update server is configured for testing, use it
   if (process.env.UPDATE_SERVER_URL) {
     try {
@@ -2129,6 +2116,41 @@ function setupAutoUpdater() {
       console.warn('[AUTO-UPDATE] Failed to set generic feed URL:', err);
     }
   }
+
+  // Monitor autoUpdater events and send to renderer
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[AUTO-UPDATE] Checking for updates...');
+    sendUpdateEvents('updater:status', 'Checking for updates...');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[AUTO-UPDATE] Update available:', info.version);
+    sendUpdateEvents('updater:available', info);
+    sendUpdateEvents('updater:status', 'Update available. Downloading...');
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('[AUTO-UPDATE] No updates available.');
+    sendUpdateEvents('updater:not-available', info);
+    sendUpdateEvents('updater:status', 'Your app is up to date.');
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[AUTO-UPDATE] Error:', err);
+    sendUpdateEvents('updater:error', err.message);
+    sendUpdateEvents('updater:status', 'Error: ' + err.message);
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    sendUpdateEvents('updater:download-progress', progressObj);
+    sendUpdateEvents('updater:status', `Downloading: ${Math.round(progressObj.percent)}%`);
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[AUTO-UPDATE] Update downloaded:', info.version);
+    sendUpdateEvents('updater:downloaded', info);
+    sendUpdateEvents('updater:status', 'Update ready to install.');
+  });
 
   // Check for updates 10 seconds after app start
   setTimeout(() => {
@@ -2141,56 +2163,8 @@ function setupAutoUpdater() {
 /**
  * Send update status to renderer process
  */
-function sendUpdateStatusToRenderer() {
+function sendUpdateEvents(eventName: string, ...args: any[]) {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('update-status', updateStatus);
+    mainWindow.webContents.send(eventName, ...args);
   }
 }
-
-// IPC handlers for update operations
-ipcMain.handle('updates:check', async () => {
-  if (isDev) {
-    return { success: false, error: 'Updates disabled in development' };
-  }
-  
-  try {
-    await autoUpdater.checkForUpdates();
-    return { success: true };
-  } catch (error) {
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    };
-  }
-});
-
-ipcMain.handle('updates:download', async () => {
-  if (isDev) {
-    return { success: false, error: 'Updates disabled in development' };
-  }
-  
-  try {
-    await autoUpdater.downloadUpdate();
-    return { success: true };
-  } catch (error) {
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    };
-  }
-});
-
-ipcMain.handle('updates:install', () => {
-  if (isDev) {
-    return { success: false, error: 'Updates disabled in development' };
-  }
-  
-  // Quit and install the update
-  autoUpdater.quitAndInstall(false, true);
-  return { success: true };
-});
-
-ipcMain.handle('updates:getStatus', () => {
-  return updateStatus;
-});
-

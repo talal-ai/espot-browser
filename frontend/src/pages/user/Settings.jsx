@@ -19,6 +19,8 @@ const UserSettings = () => {
   const [notifications, setNotifications] = useState(true);
   const [soundAlerts, setSoundAlerts] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState('');
 
   const handleSaveProfile = async () => {
     setSaving(true);
@@ -49,6 +51,116 @@ const UserSettings = () => {
       description: 'Notification preference updated'
     });
   };
+
+  const handleCheckUpdates = async () => {
+    if (!window.electron?.updater) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Update feature not available'
+      });
+      return;
+    }
+
+    setCheckingUpdates(true);
+    setUpdateStatus('Checking for updates...');
+
+    try {
+      const result = await window.electron.updater.checkForUpdates();
+      
+      if (result.success) {
+        // If still checking after 3 seconds in dev mode, it's probably stuck
+        setTimeout(() => {
+          if (checkingUpdates) {
+            setCheckingUpdates(false);
+            setUpdateStatus('');
+            toast({
+              title: 'Development mode',
+              description: 'Updates only work in production builds. Use "npm run dist:win" to test.'
+            });
+          }
+        }, 3000);
+      } else {
+        setCheckingUpdates(false);
+        setUpdateStatus('');
+        
+        // Check if it's a dev mode error
+        if (result.error?.includes('not packed') || result.error?.includes('development')) {
+          toast({
+            title: 'Development mode',
+            description: 'Updates only work in production builds. Use "npm run dist:win" to test.'
+          });
+        } else {
+          toast({
+            variant: 'destructive',
+            title: 'Update check failed',
+            description: result.error || 'Could not check for updates'
+          });
+        }
+      }
+    } catch (error) {
+      setCheckingUpdates(false);
+      setUpdateStatus('');
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to check for updates'
+      });
+    }
+  };
+
+  // Listen for update events from Electron
+  React.useEffect(() => {
+    if (!window.electron?.updater) return;
+
+    const removeStatusListener = window.electron.updater.onStatusChange?.((status) => {
+      setUpdateStatus(status);
+    });
+
+    const removeAvailableListener = window.electron.updater.onUpdateAvailable?.((info) => {
+      setCheckingUpdates(false);
+      toast({
+        title: 'Update available!',
+        description: `Version ${info.version} is downloading in the background.`
+      });
+    });
+
+    const removeNotAvailableListener = window.electron.updater.onUpdateNotAvailable?.(() => {
+      setCheckingUpdates(false);
+      setUpdateStatus('');
+      toast({
+        title: 'Up to date!',
+        description: 'You are running the latest version.'
+      });
+    });
+
+    const removeDownloadedListener = window.electron.updater.onUpdateDownloaded?.((info) => {
+      setCheckingUpdates(false);
+      setUpdateStatus('');
+      toast({
+        title: 'Update ready!',
+        description: `Version ${info.version} will install on restart.`
+      });
+    });
+
+    const removeErrorListener = window.electron.updater.onError?.((error) => {
+      setCheckingUpdates(false);
+      setUpdateStatus('');
+      toast({
+        variant: 'destructive',
+        title: 'Update error',
+        description: error
+      });
+    });
+
+    return () => {
+      removeStatusListener?.();
+      removeAvailableListener?.();
+      removeNotAvailableListener?.();
+      removeDownloadedListener?.();
+      removeErrorListener?.();
+    };
+  }, [toast]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -94,7 +206,7 @@ const UserSettings = () => {
           </TabsTrigger>
           <TabsTrigger value="preferences" className="gap-2">
             <SettingsIcon className="w-4 h-4" />
-            Preferences
+            Updates
           </TabsTrigger>
           <TabsTrigger value="security" className="gap-2">
             <Lock className="w-4 h-4" />
@@ -179,17 +291,18 @@ const UserSettings = () => {
           <GlassCard>
             <div className="p-6">
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
                   <SettingsIcon className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Appearance & Notifications</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Customize your experience</p>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Software Updates</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Keep the app up to date</p>
                 </div>
               </div>
 
               <div className="space-y-6">
-                <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                {/* Dark Mode - Commented out for now */}
+                {/* <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
                       {darkMode ? <Moon className="w-5 h-5 text-gray-600 dark:text-gray-300" /> : <Sun className="w-5 h-5 text-orange-500" />}
@@ -200,9 +313,10 @@ const UserSettings = () => {
                     </div>
                   </div>
                   <Switch checked={darkMode} onCheckedChange={handleToggleDarkMode} />
-                </div>
+                </div> */}
 
-                <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                {/* Notifications - Commented out for now */}
+                {/* <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
                       <Bell className="w-5 h-5 text-blue-600 dark:text-blue-400" />
@@ -213,9 +327,10 @@ const UserSettings = () => {
                     </div>
                   </div>
                   <Switch checked={notifications} onCheckedChange={handleToggleNotifications} />
-                </div>
+                </div> */}
 
-                <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                {/* Sound Alerts - Commented out for now */}
+                {/* <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
                       <Bell className="w-5 h-5 text-green-600 dark:text-green-400" />
@@ -226,20 +341,27 @@ const UserSettings = () => {
                     </div>
                   </div>
                   <Switch checked={soundAlerts} onCheckedChange={setSoundAlerts} />
-                </div>
+                </div> */}
 
                 <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-1">
                     <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
                       <SettingsIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                     </div>
-                    <div>
+                    <div className="flex-1">
                       <p className="text-sm font-medium text-gray-900 dark:text-white">Software Updates</p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">Keep the app up to date</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        {updateStatus || 'Keep the app up to date'}
+                      </p>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => window.electron?.updater?.checkForUpdates()}>
-                    Check for Updates
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleCheckUpdates}
+                    disabled={checkingUpdates}
+                  >
+                    {checkingUpdates ? 'Checking...' : 'Check for Updates'}
                   </Button>
                 </div>
               </div>
