@@ -6,12 +6,8 @@ on:
       - "v*"
 
 jobs:
-  release:
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      matrix:
-        os: [windows-latest, macos-latest]
+  release-windows:
+    runs-on: windows-latest
 
     steps:
       - name: Check out Git repository
@@ -22,8 +18,10 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install dependencies
-        run: npm install
+      - name: Clean install dependencies
+        run: |
+          Remove-Item -Path package-lock.json -ErrorAction SilentlyContinue
+          npm install
         working-directory: frontend
 
       - name: Build and release
