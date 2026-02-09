@@ -204,7 +204,6 @@
           ]
         }
       ],
-      "icon": "assets/icon.ico",
       "category": "public.app-category.utilities",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
