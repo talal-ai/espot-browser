@@ -1,6 +1,7 @@
 {
-  "name": "Espot Browser Desktop",
-  "version": "1.0.0",
+  "name": "espot-browser-desktop",
+  "productName": "Espot Browser Desktop",
+  "version": "1.0.2",
   "description": "ESPOT Browser Desktop Application",
   "main": "dist-electron/main.js",
   "homepage": "./",
