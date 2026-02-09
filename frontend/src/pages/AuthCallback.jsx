@@ -56,6 +56,15 @@ const AuthCallback = () => {
                     console.log('[AuthCallback] Provider:', user.app_metadata?.provider);
                     console.log('[AuthCallback] User metadata:', user.user_metadata);
 
+                    // Check if running in popup mode
+                    if (urlParams.get('popup') === 'true' || hashParams.get('popup') === 'true') {
+                        setStatus('Login successful! You can close this window now.');
+                        setTimeout(() => {
+                            window.close();
+                        }, 1500);
+                        return;
+                    }
+
                     setStatus('Welcome back! Redirecting to dashboard...');
 
                     // Small delay for UX - let user see the success state
@@ -81,6 +90,16 @@ const AuthCallback = () => {
 
                         if (exchangeData.session) {
                             console.log('[AuthCallback] ✅ Session established via code exchange');
+                            
+                            // Check if running in popup mode
+                            if (urlParams.get('popup') === 'true' || hashParams.get('popup') === 'true') {
+                                setStatus('Login successful! You can close this window now.');
+                                setTimeout(() => {
+                                    window.close();
+                                }, 1500);
+                                return;
+                            }
+
                             setStatus('Welcome! Redirecting to dashboard...');
                             await new Promise(resolve => setTimeout(resolve, 500));
                             navigate('/', { replace: true });
@@ -90,8 +109,17 @@ const AuthCallback = () => {
 
                     // No session and no code - redirect to auth
                     console.log('[AuthCallback] No valid session or code, redirecting to login');
+                    if (urlParams.get('popup') === 'true' || hashParams.get('popup') === 'true') {
+                         setStatus('Login failed or cancelled. You can close this window.');
+                         return; 
+                    }
                     navigate('/auth', { replace: true });
                 }
+                
+                // If we got here with a session (lines 53-66), we need to handle popup case there too
+                // (Wait, I need to edit lines 53-66 too, but I can't do non-contiguous edits with this tool.
+                //  I'll just handle the session part below in a separate edit or use multi_replace if I could.
+                //  Actually, I will cancel this and use multi_replace to handle both blocks correctly).
             } catch (err) {
                 console.error('[AuthCallback] Unexpected error:', err);
                 setError(err instanceof Error ? err.message : 'An unexpected error occurred');

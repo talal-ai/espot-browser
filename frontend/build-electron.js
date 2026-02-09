@@ -14,11 +14,7 @@ async function syncElectronAssets() {
   console.log('🧱 Copied Electron assets into dist-electron/assets');
 }
 
-const config = {
-  entryPoints: {
-    'main': 'electron/main/main.ts',
-    'preload': 'electron/preload/preload.ts'
-  },
+const commonConfig = {
   bundle: true,
   outdir: 'dist-electron',
   outExtension: { '.js': '.js' },
@@ -30,13 +26,29 @@ const config = {
   logLevel: 'info',
 };
 
+const mainConfig = {
+  ...commonConfig,
+  entryPoints: { 'main': 'electron/main/main.ts' },
+  format: 'esm',
+  banner: {
+    js: `import { createRequire } from 'module';const require = createRequire(import.meta.url);import { fileURLToPath } from 'url';import { dirname } from 'path';const __filename = fileURLToPath(import.meta.url);const __dirname = dirname(__filename);`,
+  },
+};
+
+const preloadConfig = {
+  ...commonConfig,
+  entryPoints: { 'preload': 'electron/preload/preload.ts' },
+  format: 'cjs',
+};
+
 await syncElectronAssets();
 
 if (isDev) {
-  const ctx = await esbuild.context(config);
-  await ctx.watch();
+  const mainCtx = await esbuild.context(mainConfig);
+  const preloadCtx = await esbuild.context(preloadConfig);
+  await Promise.all([mainCtx.watch(), preloadCtx.watch()]);
   console.log('👀 Watching Electron files for changes...');
 } else {
-  await esbuild.build(config);
+  await Promise.all([esbuild.build(mainConfig), esbuild.build(preloadConfig)]);
   console.log('✅ Electron build complete');
 }

@@ -68,12 +68,7 @@ def create_icon_from_png(source_path: str, output_dir: str) -> dict:
     for size in sizes:
         output_path = output_dir / f"icon_{size}x{size}.png"
         resized = img.resize((size, size), Image.Resampling.LANCZOS)
-        
-        # Ensure transparency for smaller icons
-        if size <= 48:
-            # For small icons, ensure they have good contrast
-            resized = add_background_if_needed(resized, size)
-        
+        # Keep transparency for all sizes
         resized.save(output_path, 'PNG', optimize=True)
         print(f"  [OK] {size}x{size:>3} -> {output_path.name}")
         generated_files[f'png_{size}'] = str(output_path)
@@ -88,14 +83,8 @@ def create_icon_from_png(source_path: str, output_dir: str) -> dict:
     
     for size in ico_sizes:
         resized = img.resize((size, size), Image.Resampling.LANCZOS)
-        
-        # For sizes <= 48x48, also create a version with solid background for better visibility
-        if size <= 48:
-            # Create version with background
-            resized_bg = add_solid_background(resized, size, bg_color=(255, 255, 255, 255))
-            ico_images.append(resized_bg)
-        else:
-            ico_images.append(resized)
+        # Keep transparency for all sizes
+        ico_images.append(resized)
     
     # Save as ICO with all embedded sizes
     ico_images[0].save(
@@ -373,6 +362,7 @@ def main():
     
     # Find source icon
     source_options = [
+        frontend_dir / "public" / "web-app-manifest-512x512.png",
         frontend_dir / "public" / "icon1.png",
         frontend_dir / "assets" / "icon.png",
         frontend_dir / "src" / "assets" / "logo.png",

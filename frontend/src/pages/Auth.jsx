@@ -15,6 +15,7 @@ const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
@@ -109,16 +110,20 @@ const Auth = () => {
   };
 
   const handleGoogleSignIn = async () => {
-    setLoading(true);
+    setGoogleLoading(true);
     setError("");
     try {
       await signInWithGoogle();
-      // Do not navigate here. OAuth flow will redirect to Google,
-      // and return to `/auth/callback` where the session is finalized.
+      // For popup flow, we don't navigate. The popup will close itself,
+      // and AuthContext will detect the new session via storage event or focus.
+      // We keep the loading state until the user is actually logged in (handled by parent redirect/state change)
+      // or we can set a timeout to reset it if nothing happens.
+      
+      // Optional: Reset loading after a timeout just in case user closes popup without logging in
+      setTimeout(() => setGoogleLoading(false), 60000); 
     } catch (err) {
       setError(err.message || "Google sign-in failed. Please try again.");
-    } finally {
-      setLoading(false);
+      setGoogleLoading(false);
     }
   };
 
@@ -373,9 +378,16 @@ const Auth = () => {
                 variant="outline"
                 className="w-full h-11 border-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
                 onClick={handleGoogleSignIn}
-                disabled={loading}
+                disabled={loading || googleLoading}
               >
-                <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+                {googleLoading ? (
+                  <div className="flex items-center justify-center">
+                    <div className="w-5 h-5 border-2 border-gray-500 border-t-transparent rounded-full animate-spin mr-2"></div>
+                    Connecting...
+                  </div>
+                ) : (
+                  <>
+                  <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                   <path
                     fill="currentColor"
                     d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -394,6 +406,8 @@ const Auth = () => {
                   />
                 </svg>
                 Continue with Google
+                  </>
+                )}
               </Button>
             ) : (
               <div className="w-full p-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">

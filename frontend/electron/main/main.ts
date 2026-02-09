@@ -1,9 +1,13 @@
+import fs from 'node:fs';
 import { app, BrowserWindow, ipcMain, Menu, shell, nativeImage, session, net } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import path from 'path';
 import { FingerprintProfile, createSpoofedWindow, applySpoofingProfile } from './fingerprint-injector';
 import { generateModernAutofillScript } from './autofill-generator';
 import axios from 'axios';
+import contextMenu from 'electron-context-menu';
+
+
 
 const APP_ID = 'com.espot.browser.v2';
 const APP_NAME = 'ESPOT Browser';
@@ -15,6 +19,13 @@ const API_BASE_URL = process.env.API_BASE_URL ?? (process.env.NODE_ENV === 'deve
 
 // Check if in development mode
 const isDev = process.env.NODE_ENV === 'development';
+
+// Enable context menu (Copy, Paste, etc.)
+contextMenu({
+  showLookUpSelection: false,
+  showSearchWithGoogle: false,
+  showInspectElement: false,
+});
 // DISABLED: Browser feature restrictions (was causing Google login issues)
 // process.env.STRICT_WEBRTC = process.env.STRICT_WEBRTC || '1';
 // const STRICT_WEBRTC_ENABLED = process.env.STRICT_WEBRTC === '1';
@@ -50,18 +61,6 @@ if (app.setAppUserModelId) app.setAppUserModelId(APP_ID);
 
 // Global reference to mainWindow to prevent garbage collection
 let mainWindow: BrowserWindow | null = null;
-
-// Global app icon for all windows
-const iconFileName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
-const appIconPath = path.join(__dirname, '..', 'assets', iconFileName);
-console.log('[ESPOT] Loading app icon from:', appIconPath);
-const rawAppIcon = nativeImage.createFromPath(appIconPath);
-const windowIcon = rawAppIcon.isEmpty() ? undefined : rawAppIcon;
-if (rawAppIcon.isEmpty()) {
-  console.warn('[ESPOT] Warning: App icon is empty or could not be loaded');
-} else {
-  console.log('[ESPOT] App icon loaded successfully');
-}
 
 // Global fingerprint profile tracking
 let activeProfile: FingerprintProfile | null = null;
@@ -137,7 +136,6 @@ function createMainWindow() {
     show: false,
     frame: true,
     titleBarStyle: 'default',
-    icon: appIconPath,
     fullscreen: false,
     fullscreenable: true,
     webPreferences: {
@@ -149,6 +147,12 @@ function createMainWindow() {
       webviewTag: true, // Enable <webview> tag for browser-like tab functionality
       ...(STRICT_WEBRTC_ENABLED ? { webSecurity: true, sandbox: true } : {}),
     },
+    icon: (() => {
+      const iconPath = path.join(__dirname, '../assets/icon.ico');
+      console.log('[ESPOT] Icon path:', iconPath);
+      console.log('[ESPOT] Icon exists:', fs.existsSync(iconPath));
+      return iconPath;
+    })(),
   });
 
   // Load the app
@@ -228,7 +232,6 @@ function createMainWindow() {
             width: 600,
             height: 700,
             show: true,
-            icon: appIconPath,
             webPreferences: {
               nodeIntegration: false,
               contextIsolation: true,
@@ -239,6 +242,8 @@ function createMainWindow() {
               partition: sessionPartition, // Use user's session partition with proxy
             },
           });
+
+
 
           // Inject stealth headers for ALL URLs
           googleChild.webContents.session.webRequest.onBeforeSendHeaders(
@@ -279,7 +284,6 @@ function createMainWindow() {
             width: 1200,
             height: 800,
             show: true,
-            icon: appIconPath,
             webPreferences: {
               nodeIntegration: false,
               contextIsolation: true,
@@ -299,7 +303,6 @@ function createMainWindow() {
             width: 1200,
             height: 800,
             show: true,
-            icon: appIconPath,
             webPreferences: {
               nodeIntegration: false,
               contextIsolation: true,
@@ -333,10 +336,11 @@ function createMainWindow() {
   });
 
   // Create application menu
-  createMenu();
+  // createMenu(); // DISABLED: Remove top bar
+  Menu.setApplicationMenu(null); // Explicitly remove menu
 }
 
-// Create application menu
+// Create application menu (UNUSED)
 function createMenu() {
   const template = [
     {
@@ -530,7 +534,6 @@ function setupIpcHandlers() {
       width: 1200,
       height: 800,
       show: true,
-      icon: appIconPath,
       webPreferences,
     });
     
@@ -859,7 +862,6 @@ function setupIpcHandlers() {
         maximizable: false,
         title: 'Sign in with Google',
         show: true,
-        icon: windowIcon,
         webPreferences: {
           nodeIntegration: false,
           contextIsolation: true,
@@ -1052,7 +1054,6 @@ function setupIpcHandlers() {
           width: 1200,
           height: 800,
           show: true,
-          icon: windowIcon,
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -1074,7 +1075,6 @@ function setupIpcHandlers() {
           width: 1200,
           height: 800,
           show: true,
-          icon: windowIcon,
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -1138,7 +1138,6 @@ function setupIpcHandlers() {
           height: 900,
           show: false,  // CRITICAL: Start hidden to prevent any flash
           backgroundColor: '#0a0a0a',
-          icon: windowIcon,
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -1155,7 +1154,6 @@ function setupIpcHandlers() {
           height: 900,
           show: false,
           backgroundColor: '#0a0a0a',
-          icon: windowIcon,
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -1984,7 +1982,6 @@ function createUserWindow(userId: string, url: string = 'about:blank'): BrowserW
     width: 1200,
     height: 800,
     show: true,
-    icon: windowIcon,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -2104,7 +2101,7 @@ function setupAutoUpdater() {
   console.log('[AUTO-UPDATE] Initializing auto-updater...');
   
   // Configure update behavior
-  autoUpdater.autoDownload = true; // Auto-download updates in background
+  autoUpdater.autoDownload = false; // Manual download
   autoUpdater.autoInstallOnAppQuit = true; // Install update when user quits app
   
   // If a local generic update server is configured for testing, use it
@@ -2116,6 +2113,12 @@ function setupAutoUpdater() {
       console.warn('[AUTO-UPDATE] Failed to set generic feed URL:', err);
     }
   }
+
+  // Handle manual download request
+  ipcMain.handle('updater:download-update', () => {
+    console.log('[AUTO-UPDATE] Manual download requested');
+    autoUpdater.downloadUpdate();
+  });
 
   // Monitor autoUpdater events and send to renderer
   autoUpdater.on('checking-for-update', () => {

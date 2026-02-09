@@ -30,13 +30,14 @@ export const authService = {
      * Uses Supabase's built-in OAuth flow with PKCE for security
      */
     async signInWithGoogle() {
-        const redirectUrl = getRedirectUrl();
-        console.log('[AuthService] Starting Google OAuth with redirect:', redirectUrl);
+        const redirectUrl = getRedirectUrl() + '?popup=true';
+        console.log('[AuthService] Starting Google OAuth (Popup) with redirect:', redirectUrl);
 
         const { data, error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
                 redirectTo: redirectUrl,
+                skipBrowserRedirect: true,
                 queryParams: {
                     access_type: 'offline',
                     prompt: 'consent',
@@ -49,8 +50,29 @@ export const authService = {
             throw error;
         }
 
-        console.log('[AuthService] OAuth initiated, redirecting to Google...');
-        return data;
+        if (data?.url) {
+            console.log('[AuthService] OAuth initiated, opening popup:', data.url);
+            // Open the OAuth URL in a new window (popup)
+            // Dimensions: 500x600 is standard for auth popups
+            const width = 500;
+            const height = 600;
+            const left = window.screen.width / 2 - width / 2;
+            const top = window.screen.height / 2 - height / 2;
+            
+            const popup = window.open(
+                data.url,
+                'google_auth_popup',
+                `width=${width},height=${height},top=${top},left=${left},resizable=yes,scrollbars=yes,status=yes`
+            );
+
+            if (!popup) {
+                 throw new Error("Popup blocked. Please allow popups for this site.");
+            }
+            
+            return { success: true, popup };
+        }
+        
+        return { success: false };
     },
 
     /**

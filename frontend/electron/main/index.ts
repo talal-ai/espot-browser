@@ -30,7 +30,7 @@ const getAssetPath = (...paths: string[]): string => {
 };
 
 // Global app icon for all windows
-const iconFileName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+const iconFileName = process.platform === 'win32' ? 'logo.ico' : 'logo.png';
 const appIconPath = getAssetPath(iconFileName);
 const rawAppIcon = nativeImage.createFromPath(appIconPath);
 const windowIcon = rawAppIcon.isEmpty() ? undefined : rawAppIcon;

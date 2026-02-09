@@ -22,7 +22,7 @@ const UpdateNotification = () => {
     listeners.push(window.electron.updater.onUpdateAvailable((info) => {
       setStatus('available');
       setVersionInfo(info);
-      toast.info(`New version ${info.version} found! Downloading...`);
+      // Removed toast.info to avoid duplicate notifications (UI component handles it)
     }));
 
     listeners.push(window.electron.updater.onUpdateNotAvailable(() => {
@@ -52,6 +52,11 @@ const UpdateNotification = () => {
     };
   }, []);
 
+  const handleDownload = () => {
+    window.electron?.updater?.downloadUpdate();
+    setStatus('downloading'); // Optimistic update
+  };
+  
   const handleInstall = () => {
     window.electron?.updater?.quitAndInstall();
   };
@@ -62,7 +67,8 @@ const UpdateNotification = () => {
     <div className="fixed bottom-4 right-4 z-50 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg rounded-lg p-4 animate-in slide-in-from-bottom-5">
       <div className="flex justify-between items-start mb-2">
         <h4 className="font-semibold text-sm">
-          {status === 'downloaded' ? 'Update Ready' : 'Downloading Update...'}
+          {status === 'available' ? 'Update Available' : 
+           status === 'downloaded' ? 'Update Ready' : 'Downloading Update...'}
         </h4>
         <button onClick={() => setStatus('idle')} className="text-gray-500 hover:text-gray-700">
           <X className="w-4 h-4" />
@@ -71,8 +77,15 @@ const UpdateNotification = () => {
 
       {versionInfo && (
         <p className="text-xs text-gray-500 mb-2">
-          Version {versionInfo.version}
+          New version {versionInfo.version} is available.
         </p>
+      )}
+
+      {status === 'available' && (
+        <Button size="sm" className="w-full mt-2 gap-2" onClick={handleDownload}>
+          <Download className="w-4 h-4" />
+          Download Update
+        </Button>
       )}
 
       {status === 'downloading' && (
@@ -90,12 +103,6 @@ const UpdateNotification = () => {
           <RefreshCw className="w-4 h-4" />
           Restart to Update
         </Button>
-      )}
-      
-      {status === 'available' && (
-         <div className="flex items-center gap-2 text-xs text-blue-500">
-            <Download className="w-3 h-3 animate-bounce" /> Starting download...
-         </div>
       )}
     </div>
   );

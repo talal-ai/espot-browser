@@ -75,6 +75,7 @@ const api = {
   // Auto-Update API
   updater: {
     checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+    downloadUpdate: () => ipcRenderer.invoke('updater:download-update'),
     quitAndInstall: () => ipcRenderer.invoke('updater:quit-and-install'),
     
     onStatusChange: (callback: (status: string) => void) => {
@@ -181,6 +182,7 @@ export interface ElectronAPI {
 
   updater: {
     checkForUpdates: () => Promise<any>;
+    downloadUpdate: () => Promise<void>;
     quitAndInstall: () => Promise<void>;
     onStatusChange: (callback: (status: string) => void) => () => void;
     onUpdateAvailable: (callback: (info: any) => void) => () => void;

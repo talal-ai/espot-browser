@@ -1,7 +1,6 @@
 {
   "name": "espot-browser-desktop",
-  "productName": "Espot Browser",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "description": "ESPOT Browser Desktop Application",
   "main": "dist-electron/main.js",
   "homepage": "./",
@@ -17,7 +16,7 @@
     "dist:win": "npm run build && electron-builder --win",
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:linux": "npm run build && electron-builder --linux",
-    "generate:icons": "node scripts/generate-icons.js",
+    "generate:icons": "python scripts/generate-icons.py",
     "package": "electron-forge package",
     "make": "electron-forge make"
   },
@@ -30,36 +29,9 @@
   ],
   "author": "ESPOT Solutions",
   "license": "MIT",
+  "type": "module",
   "dependencies": {
-    "axios": "^1.13.1",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "cmdk": "^1.1.1",
-    "daisyui": "^5.4.2",
-    "electron-squirrel-startup": "^1.0.1",
-    "electron-updater": "^6.7.3",
-    "embla-carousel-react": "^8.6.0",
-    "framer-motion": "^12.23.24",
-    "hugeicons-react": "^0.3.0",
-    "input-otp": "^1.4.2",
-    "lucide-react": "^0.548.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-redux": "^9.0.4",
-    "react-router-dom": "^6.30.1",
-    "recharts": "^2.15.4",
-    "socket.io-client": "^4.8.3",
-    "tailwind-merge": "^3.3.1"
-  },
-  "devDependencies": {
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.2",
-    "@types/chrome-remote-interface": "^0.33.0",
-    "@types/node": "^20.19.24",
-    "@types/react": "^18.3.26",
-    "@types/react-dom": "^18.3.7",
-    "@vitejs/plugin-react": "^4.7.0",
-     "@emotion/react": "^11.14.0",
+    "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@fingerprintjs/fingerprintjs": "^5.0.1",
     "@fontsource/montserrat": "^5.2.8",
@@ -97,38 +69,56 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@reduxjs/toolkit": "^2.0.1",
     "@supabase/supabase-js": "^2.76.1",
-    "autoprefixer": "^10.4.20",
-    "baseline-browser-mapping": "^2.9.11",
+    "axios": "^1.13.1",
     "chrome-remote-interface": "^0.33.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "concurrently": "^8.2.2",
-    "cross-env": "^7.0.3",
     "daisyui": "^5.4.2",
-    "electron": "^28.3.3",
-    "electron-builder": "^26.5.0",
+    "electron-squirrel-startup": "^1.0.1",
+    "electron-updater": "^6.7.3",
     "embla-carousel-react": "^8.6.0",
-    "esbuild": "^0.25.11",
     "framer-motion": "^12.23.24",
     "hugeicons-react": "^0.3.0",
-    "icon-gen": "^2.0.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.548.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-redux": "^9.0.4",
+    "react-router-dom": "^6.30.1",
+    "recharts": "^2.15.4",
+    "socket.io-client": "^4.8.3",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/chrome-remote-interface": "^0.33.0",
+    "@types/node": "^20.19.24",
+    "@types/react": "^18.3.26",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "autoprefixer": "^10.4.20",
+    "baseline-browser-mapping": "^2.9.11",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^28.3.3",
+    "electron-builder": "^26.5.0",
+    "esbuild": "^0.25.11",
+    "icon-gen": "^2.0.0",
     "postcss": "^8.4.47",
     "sonner": "^1.7.4",
     "tailwindcss": "^3.4.15",
+    "socket.io-client": "^4.8.3",
     "tailwindcss-animate": "^1.0.7",
     "tweetnacl": "^1.0.3",
     "typescript": "^5.9.3",
     "ua-parser-js": "^2.0.6",
     "vaul": "^1.1.2",
     "vite": "^5.4.21",
-    "vitest": "^4.0.18",
-    "wait-on": "^9.0.3"
+    "vitest": "^4.0.18"
   },
   "build": {
-    "appId": "com.espot.browser.v2",
     "publish": [
       {
         "provider": "github",
@@ -154,7 +144,10 @@
       "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}",
       "package.json"
     ],
-
+    "asarUnpack": [
+      "node_modules/puppeteer/**/*",
+      "node_modules/chrome-remote-interface/**/*"
+    ],
     "win": {
       "target": [
         {
@@ -171,6 +164,8 @@
         }
       ],
       "icon": "assets/icon.ico",
+      "signAndEditExecutable": false,
+      "artifactName": "${productName}-${version}-${arch}-Setup.${ext}",
       "compression": "normal"
     },
     "nsis": {
@@ -183,6 +178,7 @@
       "deleteAppDataOnUninstall": false,
       "installerIcon": "assets/icon.ico",
       "uninstallerIcon": "assets/icon.ico",
+      "installerHeader": "assets/icon.ico",
       "installerHeaderIcon": "assets/icon.ico",
       "license": "../LICENSE"
     },
@@ -206,7 +202,7 @@
           ]
         }
       ],
-      "icon": "assets/icon.icns",
+      "icon": "assets/icon.ico",
       "category": "public.app-category.utilities",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
@@ -244,7 +240,7 @@
           ]
         }
       ],
-      "icon": "assets/icon.png",
+      "icon": "assets/icon.ico",
       "category": "Utility",
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     }

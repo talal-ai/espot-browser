@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Wifi, Monitor, AppWindow, RefreshCw } from 'lucide-react';
+import { Users, Wifi, Monitor, AppWindow, RefreshCw, Shield, LogIn, LogOut, Activity } from 'lucide-react';
 import StatCard from '../../components/common/StatCard';
 import { BarChartComponent, LineChartComponent, PieChartComponent } from '../../components/charts/ChartComponents';
 import GlassCard from '../../components/common/GlassCard';
@@ -9,6 +9,31 @@ import { systemService } from '../../services/system.service';
 import { useUsers } from '../../hooks/use-users';
 import { useSessions } from '../../hooks/use-sessions';
 import { useProxies } from '../../hooks/use-proxies';
+
+// Helper to format action text
+const formatActivityAction = (action) => {
+  if (!action) return 'Unknown Action';
+  const lower = action.toLowerCase();
+  
+  // Specific overrides for known clumsy backend strings
+  if (lower.includes('proxy_assigned')) return 'Proxy Assigned';
+  if (lower.includes('proxy_unassigned')) return 'Proxy Unassigned';
+  if (lower.includes('login')) return 'User Logged In';
+  if (lower.includes('logout')) return 'User Logged Out';
+  
+  // Generic fallback: Replace underscores with spaces and capitalize
+  return action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+};
+
+// Helper to get icon based on activity type
+const getActivityIcon = (type) => {
+  switch (type) {
+    case 'login': return LogIn;
+    case 'logout': return LogOut;
+    case 'proxy': return Shield;
+    default: return Activity;
+  }
+};
 
 const Dashboard = () => {
   const { users, loading: usersLoading } = useUsers();
@@ -164,22 +189,33 @@ const Dashboard = () => {
             <div className="p-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Recent Activity</h3>
               <div className="space-y-4">
-                {recentActivity.map((activity, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center gap-4 p-4 rounded-lg bg-gray-50/50 dark:bg-gray-800/50 hover:bg-gray-100/50 dark:hover:bg-gray-700/50 transition-colors"
-                  >
-                    <div className={`w-2 h-2 rounded-full ${activity.type === 'login' ? 'bg-green-500' :
-                      activity.type === 'logout' ? 'bg-red-500' :
-                        activity.type === 'proxy' ? 'bg-blue-500' : 'bg-orange-500'
-                      }`}></div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{activity.user}</p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">{activity.action}</p>
+                {recentActivity.map((activity, idx) => {
+                  const Icon = getActivityIcon(activity.type);
+                  return (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-4 p-4 rounded-lg bg-gray-50/50 dark:bg-gray-800/50 hover:bg-gray-100/50 dark:hover:bg-gray-700/50 transition-colors border border-transparent hover:border-gray-200 dark:hover:border-gray-700"
+                    >
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        activity.type === 'login' ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' :
+                        activity.type === 'logout' ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' :
+                        activity.type === 'proxy' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' :
+                        'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
+                      }`}>
+                        <Icon className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{activity.user}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{formatActivityAction(activity.action)}</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs font-medium text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-900 px-2 py-1 rounded border border-gray-200 dark:border-gray-700">
+                          {activity.time}
+                        </span>
+                      </div>
                     </div>
-                    <span className="text-xs text-gray-500 dark:text-gray-500">{activity.time}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </GlassCard>
