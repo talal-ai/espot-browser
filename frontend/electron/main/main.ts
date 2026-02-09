@@ -232,6 +232,7 @@ function createMainWindow() {
             width: 600,
             height: 700,
             show: true,
+            icon: path.join(__dirname, '../assets/icon.ico'),
             webPreferences: {
               nodeIntegration: false,
               contextIsolation: true,
@@ -303,6 +304,7 @@ function createMainWindow() {
             width: 1200,
             height: 800,
             show: true,
+            icon: path.join(__dirname, '../assets/icon.ico'),
             webPreferences: {
               nodeIntegration: false,
               contextIsolation: true,
@@ -534,6 +536,7 @@ function setupIpcHandlers() {
       width: 1200,
       height: 800,
       show: true,
+      icon: path.join(__dirname, '../assets/icon.ico'),
       webPreferences,
     });
     
@@ -862,6 +865,7 @@ function setupIpcHandlers() {
         maximizable: false,
         title: 'Sign in with Google',
         show: true,
+        icon: path.join(__dirname, '../assets/icon.ico'),
         webPreferences: {
           nodeIntegration: false,
           contextIsolation: true,
@@ -1075,6 +1079,7 @@ function setupIpcHandlers() {
           width: 1200,
           height: 800,
           show: true,
+          icon: path.join(__dirname, '../assets/icon.ico'),
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -1154,6 +1159,7 @@ function setupIpcHandlers() {
           height: 900,
           show: false,
           backgroundColor: '#0a0a0a',
+          icon: path.join(__dirname, '../assets/icon.ico'),
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
