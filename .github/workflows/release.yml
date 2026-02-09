@@ -29,3 +29,27 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: npm run release
         working-directory: frontend
+
+  release-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Clean install dependencies
+        run: |
+          rm -f package-lock.json
+          npm install
+        working-directory: frontend
+
+      - name: Build and release
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: npm run release
+        working-directory: frontend
