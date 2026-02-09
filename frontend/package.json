@@ -1,7 +1,7 @@
 {
   "name": "espot-browser-desktop",
   "productName": "Espot Browser Desktop",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "ESPOT Browser Desktop Application",
   "main": "dist-electron/main.js",
   "homepage": "./",
@@ -206,8 +206,10 @@
       ],
       "icon": "assets/icon.png",
       "category": "public.app-category.utilities",
-      "hardenedRuntime": false,
+      "hardenedRuntime": true,
       "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "dmg": {

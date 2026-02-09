@@ -20,7 +20,7 @@ const commonConfig = {
   outExtension: { '.js': '.js' },
   platform: 'node',
   target: 'node18',
-  external: ['electron', 'electron-context-menu'],
+  external: ['electron'],
   sourcemap: isDev,
   minify: !isDev,
   logLevel: 'info',
