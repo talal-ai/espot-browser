@@ -175,6 +175,7 @@ function generateAutofillScript(username, password, url) {
 
 const WebView = forwardRef(({ url, isActive, partition, userId, userAgent, credentials, onTitleChange, onUrlChange, onLoadingChange, onFaviconChange }, ref) => {
     const webviewRef = useRef(null);
+    const [initialUrl] = React.useState(url); // Capture initial URL for unchecked src attribute
     const [cookiesInjected, setCookiesInjected] = React.useState(false);
 
     // Use a SHARED session partition for all tabs of the same user
@@ -457,7 +458,7 @@ const WebView = forwardRef(({ url, isActive, partition, userId, userAgent, crede
         <div className={`w-full h-full flex flex-col ${isActive ? 'visible' : 'hidden'}`}>
             <webview
                 ref={webviewRef}
-                src={url} // Initial src
+                src={initialUrl} // Initial src only - updates handled by loadURL
                 partition={sessionPartition}
                 useragent={userAgent}
                 style={{ width: '100%', height: '100%', display: 'flex' }}

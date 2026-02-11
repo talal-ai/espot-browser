@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { processUrlInput } from '../../utils/url-utils';
 import {
     ArrowLeft, ArrowRight, RotateCw, Lock, Search,
     ShieldCheck, Star
@@ -30,11 +31,7 @@ const BrowserToolbar = ({
     const handleSubmit = (e) => {
         e.preventDefault();
         if (urlInput.trim()) {
-            let finalUrl = urlInput;
-            // Basic scheme auto-appending
-            if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
-                finalUrl = 'https://' + finalUrl;
-            }
+            const finalUrl = processUrlInput(urlInput);
             onNavigate(finalUrl);
         }
     };
