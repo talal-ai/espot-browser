@@ -3,12 +3,14 @@
  * Central configuration for API endpoints and settings
  */
 
-const defaultBaseUrl = import.meta.env.MODE === 'production'
-  ? 'https://espot-browser.onrender.com'
-  : 'http://localhost:8000';
+const getBaseUrl = () => {
+  if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
+  if (import.meta.env.MODE === 'production') return 'https://espot-browser.onrender.com';
+  return 'http://localhost:8000';
+};
 
 export const API_CONFIG = {
-  baseURL: import.meta.env.VITE_API_BASE_URL || defaultBaseUrl,
+  baseURL: getBaseUrl(),
   timeout: parseInt(import.meta.env.VITE_API_TIMEOUT || '30000'),
   enableMockData: import.meta.env.VITE_ENABLE_MOCK_DATA === 'true',
   enableDevTools: import.meta.env.VITE_ENABLE_DEV_TOOLS === 'true',
@@ -25,6 +27,8 @@ export const API_ENDPOINTS = {
     get: (id: string) => `/api/admin/users/${id}`,
     update: (id: string) => `/api/admin/users/${id}`,
     delete: (id: string) => `/api/admin/users/${id}`,
+    getDevices: (id: string) => `/api/admin/users/${id}/devices`,
+    logoutDevice: (userId: string, sessionId: string) => `/api/admin/users/${userId}/devices/${sessionId}`,
   },
 
   // Services (with credentials) - under /api/admin for security

@@ -15,6 +15,8 @@ interface UseUsersReturn {
   createUser: (userData: UserCreate) => Promise<ApiResponse<User>>;
   updateUser: (userId: string, userData: UserUpdate) => Promise<ApiResponse<User>>;
   deleteUser: (userId: string) => Promise<ApiResponse<void>>;
+  getUserDevices: (userId: string) => Promise<ApiResponse<any>>;
+  logoutUserDevice: (userId: string, sessionId: string) => Promise<ApiResponse<void>>;
   refresh: () => Promise<void>;
 }
 
@@ -174,6 +176,44 @@ export function useUsers(): UseUsersReturn {
     [toast]
   );
 
+  // Get user devices
+  const getUserDevices = useCallback(
+    async (userId: string): Promise<ApiResponse<any>> => {
+      try {
+        return await usersService.getUserDevices(userId);
+      } catch (err) {
+        return { 
+          success: false, 
+          error: { 
+            message: err instanceof Error ? err.message : 'Failed to fetch devices', 
+            details: err 
+          } 
+        };
+      }
+    },
+    []
+  );
+
+  // Logout user device
+  const logoutUserDevice = useCallback(
+    async (userId: string, sessionId: string): Promise<ApiResponse<void>> => {
+      try {
+        const response = await usersService.logoutUserDevice(userId, sessionId);
+        if (response.success) {
+           toast({ title: 'Success', description: 'Device logged out successfully' });
+        } else {
+           toast({ variant: 'destructive', title: 'Error', description: response.error?.message || 'Failed to log out device' });
+        }
+        return response;
+      } catch (err) {
+         const msg = err instanceof Error ? err.message : 'Failed to log out device';
+         toast({ variant: 'destructive', title: 'Error', description: msg });
+         return { success: false, error: { message: msg, details: err } };
+      }
+    },
+    [toast]
+  );
+
   // Load users on mount
   useEffect(() => {
     loadUsers();
@@ -186,6 +226,8 @@ export function useUsers(): UseUsersReturn {
     createUser,
     updateUser,
     deleteUser,
+    getUserDevices,
+    logoutUserDevice,
     refresh: loadUsers,
   };
 }

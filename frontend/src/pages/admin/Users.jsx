@@ -17,7 +17,7 @@ import fingerprintsService from '../../services/fingerprints.service';
 import { Fingerprint } from 'lucide-react';
 
 const Users = () => {
-  const { users, loading, createUser, updateUser, deleteUser, refresh } = useUsers();
+  const { users, loading, createUser, updateUser, deleteUser, refresh, getUserDevices, logoutUserDevice } = useUsers();
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -171,22 +171,17 @@ const Users = () => {
     if (!manageOpen || !editingUser) return;
 
     if (activeTab === 'devices') {
-      const loadDevices = async () => {
+        const loadDevices = async () => {
         setDevicesLoading(true);
         try {
-          // Fetch real devices/sessions from backend
-          const response = await fetch(`http://localhost:8000/api/admin/users/${editingUser.id}/devices`);
-          if (response.ok) {
-            const data = await response.json();
-            setDevicesData(data);
+          const response = await getUserDevices(editingUser.id);
+          if (response.success) {
+            setDevicesData(response.data);
           } else {
-            console.error('Failed to fetch devices:', response.statusText);
-            toast({ variant: 'destructive', title: 'Failed to load devices' });
             setDevicesData({ max_devices: editingUser.max_devices || 1, active_count: 0, devices: [] });
           }
         } catch (error) {
           console.error('Error fetching devices:', error);
-          toast({ variant: 'destructive', title: 'Error loading devices' });
           setDevicesData({ max_devices: editingUser.max_devices || 1, active_count: 0, devices: [] });
         } finally {
           setDevicesLoading(false);
@@ -220,22 +215,16 @@ const Users = () => {
   const handleForceLogout = async (sessionId) => {
     if (!editingUser) return;
     try {
-      const response = await fetch(`http://localhost:8000/api/admin/users/${editingUser.id}/devices/${sessionId}`, {
-        method: 'DELETE'
-      });
-      if (response.ok) {
-        toast({ title: 'Device logged out successfully' });
+      const response = await logoutUserDevice(editingUser.id, sessionId);
+      if (response.success) {
         // Refresh devices list
-        const refreshResponse = await fetch(`http://localhost:8000/api/admin/users/${editingUser.id}/devices`);
-        if (refreshResponse.ok) {
-          setDevicesData(await refreshResponse.json());
+        const refreshResponse = await getUserDevices(editingUser.id);
+        if (refreshResponse.success) {
+          setDevicesData(refreshResponse.data);
         }
-      } else {
-        toast({ variant: 'destructive', title: 'Failed to log out device' });
       }
     } catch (err) {
       console.error('Force logout error:', err);
-      toast({ variant: 'destructive', title: 'Error', description: 'Failed to log out device' });
     }
   };
 

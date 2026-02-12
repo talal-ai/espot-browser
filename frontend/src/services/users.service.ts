@@ -41,6 +41,20 @@ class UsersService {
   async deleteUser(userId: string): Promise<ApiResponse<void>> {
     return apiService.delete<void>(API_ENDPOINTS.users.delete(userId));
   }
+
+  /**
+   * Get user devices
+   */
+  async getUserDevices(userId: string): Promise<ApiResponse<any>> {
+    return apiService.get(API_ENDPOINTS.users.getDevices(userId));
+  }
+
+  /**
+   * Logout user device
+   */
+  async logoutUserDevice(userId: string, sessionId: string): Promise<ApiResponse<void>> {
+    return apiService.delete(API_ENDPOINTS.users.logoutDevice(userId, sessionId));
+  }
 }
 
 export const usersService = new UsersService();
