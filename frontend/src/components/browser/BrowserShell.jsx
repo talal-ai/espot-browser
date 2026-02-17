@@ -134,6 +134,7 @@ const BrowserShell = ({ children }) => {
                             onTitleChange={(title) => updateTabState(tab.id, { title })}
                             onUrlChange={(url) => updateTabState(tab.id, { url })}
                             onLoadingChange={(loading) => updateTabState(tab.id, { loading })}
+                            onHistoryChange={(historyState) => updateTabState(tab.id, historyState)}
                         />
                     </div>
                 ))}

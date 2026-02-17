@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { processUrlInput } from '../../utils/url-utils';
 import {
     ArrowLeft, ArrowRight, RotateCw, Lock, Search,
-    ShieldCheck, Star
+    ShieldCheck
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -24,7 +24,12 @@ const BrowserToolbar = ({
     // Update input when active tab URL changes
     useEffect(() => {
         if (activeTab) {
-            setUrlInput(activeTab.url || '');
+            const currentUrl = activeTab.url || '';
+            // If URL is the new tab URL (Google), show empty bar (placeholder)
+            // Use startsWith to catch variants like google.com/?gws_rd=ssl
+            const isHomeUrl = currentUrl.startsWith('https://www.google.com');
+            
+            setUrlInput(isHomeUrl ? '' : currentUrl);
         }
     }, [activeTab?.url]); // Use optional chaining just in case
 
@@ -99,7 +104,7 @@ const BrowserToolbar = ({
                         onBlur={() => setIsFocused(false)}
                         disabled={isDashboard}
                         className={`
-              w-full pl-10 pr-10 h-[34px] rounded-full 
+              w-full pl-10 pr-4 h-[34px] rounded-full 
               bg-gray-100 dark:bg-gray-800 
               border-0 
               focus-visible:ring-2 focus-visible:ring-blue-500/20 focus-visible:bg-white dark:focus-visible:bg-gray-900 
@@ -109,15 +114,6 @@ const BrowserToolbar = ({
             `}
                         placeholder={isDashboard ? "ESpot Secure Dashboard" : "Search or enter address"}
                     />
-
-                    {/* Right side icons in URL bar */}
-                    {!isDashboard && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                            <button type="button" className="text-gray-400 hover:text-yellow-400 dark:hover:text-yellow-400 transition-colors">
-                                <Star className="w-3.5 h-3.5" />
-                            </button>
-                        </div>
-                    )}
                 </form>
             </div>
 

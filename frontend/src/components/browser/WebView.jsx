@@ -173,7 +173,7 @@ function generateAutofillScript(username, password, url) {
 `;
 }
 
-const WebView = forwardRef(({ url, isActive, partition, userId, userAgent, credentials, onTitleChange, onUrlChange, onLoadingChange, onFaviconChange }, ref) => {
+const WebView = forwardRef(({ url, isActive, partition, userId, userAgent, credentials, onTitleChange, onUrlChange, onLoadingChange, onHistoryChange }, ref) => {
     const webviewRef = useRef(null);
     const [initialUrl] = React.useState(url); // Capture initial URL for unchecked src attribute
     const [cookiesInjected, setCookiesInjected] = React.useState(false);
@@ -272,11 +272,28 @@ const WebView = forwardRef(({ url, isActive, partition, userId, userAgent, crede
         const webview = webviewRef.current;
         if (!webview) return;
 
+        const updateHistoryState = () => {
+            if (onHistoryChange) {
+                // Delay slightly to ensure Electron state is updated
+                setTimeout(() => {
+                    const canGoBack = webview.canGoBack ? webview.canGoBack() : false;
+                    const canGoForward = webview.canGoForward ? webview.canGoForward() : false;
+                    
+                    onHistoryChange({ canGoBack, canGoForward });
+                }, 100);
+            }
+        };
+
         const handleDidStartLoading = () => onLoadingChange(true);
         const handleDidStopLoading = () => onLoadingChange(false);
-        const handleDidFinishLoad = () => onLoadingChange(false);
+        const handleDidFinishLoad = () => {
+            onLoadingChange(false);
+            updateHistoryState();
+        };
 
         const handlePageTitleUpdated = (e) => onTitleChange(e.title);
+        
+
 
         // Helper to check if URL is a main frame navigation or noise
         const isValidNavigation = (navUrl) => {
@@ -293,6 +310,7 @@ const WebView = forwardRef(({ url, isActive, partition, userId, userAgent, crede
                 // Update our ref so we don't trigger a re-load loop
                 currentUrlRef.current = e.url;
                 onUrlChange(e.url);
+                updateHistoryState();
             } else {
                 console.log('[WebView] Ignoring navigation to:', e.url);
             }
@@ -302,6 +320,7 @@ const WebView = forwardRef(({ url, isActive, partition, userId, userAgent, crede
             if (isValidNavigation(e.url)) {
                 currentUrlRef.current = e.url;
                 onUrlChange(e.url);
+                updateHistoryState();
             }
         };
 
@@ -428,6 +447,7 @@ const WebView = forwardRef(({ url, isActive, partition, userId, userAgent, crede
         webview.addEventListener('did-stop-loading', handleDidStopLoading);
         webview.addEventListener('did-finish-load', handleDidFinishLoad);
         webview.addEventListener('page-title-updated', handlePageTitleUpdated);
+
         webview.addEventListener('did-navigate', handleDidNavigate);
         webview.addEventListener('did-navigate-in-page', handleDidNavigateInPage);
         webview.addEventListener('dom-ready', handleDomReady);

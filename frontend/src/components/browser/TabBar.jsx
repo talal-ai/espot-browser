@@ -24,7 +24,7 @@ const Tab = ({ tab, isActive, onClick, onClose }) => {
             )}
 
             {/* Icon */}
-            <div className={cn("shrink-0 transition-colors", isActive ? "text-blue-600 dark:text-blue-400" : "opacity-70 group-hover:opacity-100")}>
+            <div className={cn("shrink-0 transition-colors flex items-center justify-center w-4 h-4", isActive ? "text-blue-600 dark:text-blue-400" : "opacity-70 group-hover:opacity-100")}>
                 {tab.type === 'dashboard' ? (
                     <LayoutDashboard className="w-4 h-4" />
                 ) : (

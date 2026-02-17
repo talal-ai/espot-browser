@@ -34,6 +34,9 @@ const STRICT_WEBRTC_ENABLED = false; // Disabled for Google login compatibility
 // Chrome User Agent (stealth files deleted, keeping just the UA)
 const CHROME_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
+// Proxy bypass list for favicons and local traffic
+const PROXY_BYPASS_LIST = '<local>,www.google.com,www.gstatic.com,*.gstatic.com,duckduckgo.com,s2.googleusercontent.com';
+
 // Crash handlers to debug ACCESS_VIOLATION errors
 process.on('uncaughtException', (error) => {
   console.error('[ESPOT] Uncaught Exception:', error);
@@ -127,6 +130,9 @@ const userSessions = new Map<string, UserSession>();
 
 // Create the main window
 function createMainWindow() {
+  // Reset proxy settings for default session on startup to avoid zombie state
+  session.defaultSession.setProxy({ proxyRules: '' }).catch(console.error);
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -334,7 +340,44 @@ function createMainWindow() {
       }
     })();
 
+    child.loadURL(url);
     return { action: 'deny' };
+  });
+
+  // Intercept new webviews (tabs) and apply proxy
+  mainWindow.webContents.on('will-attach-webview', (event, webPreferences, params) => {
+    // Strip away preload scripts if they are from the renderer (security)
+    // delete webPreferences.preload;
+    // delete webPreferences.preloadURL;
+
+    // Apply active proxy to the new webview's session partition
+    // This ensures tabs get the proxy settings even if they use a unique partition
+    const partition = webPreferences.partition;
+    if (partition) {
+      const ses = session.fromPartition(partition);
+
+      if (activeProxyConfig) {
+        const proxyRules = `${activeProxyConfig.protocol}://${activeProxyConfig.host}:${activeProxyConfig.port}`;
+        ses.setProxy({ proxyRules, proxyBypassRules: PROXY_BYPASS_LIST }).then(() => {
+          console.log(`[ESPOT] 🛡️ Auto-applied proxy to webview partition: ${partition}`);
+        }).catch(err => {
+          console.error(`[ESPOT] ❌ Failed to apply proxy to webview partition ${partition}:`, err);
+        });
+      } else {
+        // IMPORTANT: If no proxy is active, explicitly CLEAR any persisted proxy settings
+        // This prevents "zombie" proxies from previous sessions causing 407 errors
+        ses.setProxy({ proxyRules: '' }).then(() => {
+           // console.log(`[ESPOT] 🧹 Cleared proxy for webview partition (no active proxy): ${partition}`);
+        }).catch(err => {
+          console.error(`[ESPOT] ❌ Failed to clear proxy for webview partition ${partition}:`, err);
+        });
+      }
+
+      // Also allow strict mode hardening if enabled
+      if (STRICT_WEBRTC_ENABLED) {
+        applyStrictPermissions(ses);
+      }
+    }
   });
 
   // Create application menu
@@ -439,10 +482,12 @@ app.on('window-all-closed', () => {
  */
 function setupProxyAuthHandler() {
   app.on('login', (event, webContents, details, authInfo, callback) => {
+    console.log('[ESPOT] 🔐 Auth request:', authInfo.isProxy ? 'Proxy' : 'Server', details.url);
     if (authInfo.isProxy) {
       event.preventDefault();
 
       // Check if there's an active global proxy with credentials
+      console.log('[ESPOT] Checking credentials. ActiveProxy:', activeProxyConfig ? 'Yes' : 'No');
       if (activeProxyConfig && activeProxyConfig.username && activeProxyConfig.password) {
         console.log('🔐 Providing proxy authentication (global)');
         callback(activeProxyConfig.username, activeProxyConfig.password);
@@ -465,7 +510,7 @@ function setupProxyAuthHandler() {
       }
 
       // No credentials available
-      console.warn('⚠️ Proxy authentication requested but no credentials configured');
+      console.warn('⚠️ Proxy authentication requested but no credentials configured for:', details.url);
       callback('', ''); // Provide empty credentials
     }
   });
@@ -1757,7 +1802,7 @@ async function applyProxyToSession(proxyConfig: ProxyConfig): Promise<void> {
     // Apply proxy to session
     await ses.setProxy({
       proxyRules: proxyRules,
-      proxyBypassRules: '<local>' // Don't proxy localhost/127.0.0.1
+      proxyBypassRules: PROXY_BYPASS_LIST
     });
 
     // Store active config
@@ -1781,7 +1826,7 @@ async function applyProxyToSession(proxyConfig: ProxyConfig): Promise<void> {
         const userSes = session.fromPartition(userSession.sessionPartition);
         await userSes.setProxy({
           proxyRules,
-          proxyBypassRules: '<local>'
+          proxyBypassRules: PROXY_BYPASS_LIST
         });
         userSession.proxyConfig = proxyConfig;
         console.log(`   Applied global proxy to user session ${userSession.userId}`);
