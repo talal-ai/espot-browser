@@ -17,6 +17,7 @@ from src.models.database import (
     FingerprintProfile, FingerprintProfileCreate, FingerprintProfileUpdate,
     SystemStats, HealthStatus, Service, ServiceCreate, ServiceUpdate, ServiceWithAssignment,
     ServiceCreateWithCredential, CredentialUpdate, LaunchCredentials,
+    SubServiceCreate, SubServiceUpdate, AssignSubServiceRequest,
     DashboardCharts,
     Group, GroupCreate, GroupUpdate
 )
@@ -342,6 +343,126 @@ async def delete_service(service_id: str, admin=Depends(get_current_admin)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to delete service")
+
+# ============================================================================
+# SUB-SERVICE ENDPOINTS
+# ============================================================================
+
+@router.post("/services/{service_id}/sub-services", response_model=dict, status_code=status.HTTP_201_CREATED)
+async def create_sub_service(service_id: str, body: SubServiceCreate, admin=Depends(get_current_admin)):
+    """Create a sub-service under a service (name + credentials)."""
+    try:
+        encrypted = encryption_service.encrypt_password(body.password)
+        data = {"name": body.name, "username": body.username, "password_encrypted": encrypted, "visibility": body.visibility or "hidden"}
+        created = await supabase_service.create_sub_service(service_id, data)
+        return created
+    except Exception as e:
+        logger.error(f"Error creating sub-service: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/services/{service_id}/sub-services", response_model=List[dict])
+async def list_sub_services(service_id: str, admin=Depends(get_current_admin)):
+    """List sub-services for a service."""
+    try:
+        items = await supabase_service.get_sub_services(service_id)
+        return items
+    except Exception as e:
+        logger.error(f"Error listing sub-services: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list sub-services")
+
+@router.get("/sub-services/{sub_service_id}", response_model=dict)
+async def get_sub_service(sub_service_id: str, admin=Depends(get_current_admin)):
+    """Get a single sub-service."""
+    try:
+        item = await supabase_service.get_sub_service(sub_service_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Sub-service not found")
+        return item
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting sub-service: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get sub-service")
+
+@router.put("/sub-services/{sub_service_id}", response_model=dict)
+async def update_sub_service(sub_service_id: str, body: SubServiceUpdate, admin=Depends(get_current_admin)):
+    """Update a sub-service."""
+    try:
+        updates = body.dict(exclude_unset=True)
+        if "password" in updates and updates["password"]:
+            updates["password_encrypted"] = encryption_service.encrypt_password(updates.pop("password"))
+        if not updates:
+            item = await supabase_service.get_sub_service(sub_service_id)
+            if not item:
+                raise HTTPException(status_code=404, detail="Sub-service not found")
+            return item
+        updated = await supabase_service.update_sub_service(sub_service_id, updates)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Sub-service not found")
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating sub-service: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update sub-service")
+
+@router.delete("/sub-services/{sub_service_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_sub_service(sub_service_id: str, admin=Depends(get_current_admin)):
+    """Delete a sub-service."""
+    try:
+        success = await supabase_service.delete_sub_service(sub_service_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Sub-service not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting sub-service: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete sub-service")
+
+@router.get("/users/{user_id}/sub-services", response_model=List[dict])
+async def get_user_sub_services(user_id: str, admin=Depends(get_current_admin)):
+    """List sub-services assigned to a user."""
+    try:
+        items = await supabase_service.get_user_sub_services(user_id)
+        return items
+    except Exception as e:
+        logger.error(f"Error listing user sub-services: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list sub-services")
+
+@router.post("/users/{user_id}/sub-services/{sub_service_id}/assign", response_model=dict)
+async def assign_sub_service_to_user(
+    user_id: str, sub_service_id: str,
+    body: Optional[AssignSubServiceRequest] = None,
+    admin=Depends(get_current_admin)
+):
+    """Assign a sub-service to a user."""
+    try:
+        admin_id = admin.get("user_id")
+        admin_uuid = admin_id if isinstance(admin_id, str) and len(admin_id) == 36 else None
+        expires_at = None
+        if body:
+            if body.duration_days:
+                from datetime import timedelta
+                expires_at = datetime.utcnow() + timedelta(days=body.duration_days)
+            elif body.expires_at:
+                expires_at = body.expires_at
+        assigned = await supabase_service.assign_sub_service_to_user(sub_service_id, user_id, assigned_by=admin_uuid, expires_at=expires_at)
+        return assigned
+    except Exception as e:
+        logger.error(f"Error assigning sub-service: {e}", exc_info=True)
+        msg = str(e)
+        if "duplicate" in msg.lower() or "unique" in msg.lower():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Sub-service already assigned")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/users/{user_id}/sub-services/{sub_service_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def unassign_sub_service_from_user(user_id: str, sub_service_id: str, admin=Depends(get_current_admin)):
+    """Unassign a sub-service from a user."""
+    try:
+        await supabase_service.unassign_sub_service_from_user(sub_service_id, user_id)
+    except Exception as e:
+        logger.error(f"Error unassigning sub-service: {e}")
+        raise HTTPException(status_code=500, detail="Failed to unassign sub-service")
 
 # ============================================================================
 # CREDENTIALS ENDPOINTS

@@ -88,6 +88,24 @@ npm run dist
 
 ---
 
+## 🖼️ App icon (Windows)
+
+The Windows app icon (taskbar, window title bar, .exe, installer) is read from **`frontend/assets/icon.ico`**. You can:
+
+- **Place your custom logo at `frontend/assets/icon.ico`** — this is the canonical location used by the Electron main process, electron-builder, and Forge.
+- **Or place it at `frontend/icon.ico`** — the build step (`npm run build` / `build-electron.js`) will copy it to `assets/icon.ico` before packaging, so the app will use it everywhere.
+
+For best quality (taskbar, Alt+Tab, Explorer), use a multi-size `.ico` (16×16, 32×32, 48×48, 256×256). From a 256×256+ source image (e.g. PNG), run:
+
+```bash
+cd frontend
+npm run generate:icons
+```
+
+This generates `assets/icon.ico` and copies it to the right places.
+
+---
+
 ## 🔐 Code Signing (Optional but Recommended)
 
 ### Windows Code Signing

@@ -9,7 +9,7 @@ from datetime import datetime
 
 from ..services.supabase_service import supabase_service
 from ..services.encryption_service import encryption_service
-from ..models.database import LaunchCredentials, Service
+from ..models.database import LaunchCredentials
 from .auth_routes import verify_token
 
 logger = logging.getLogger(__name__)
@@ -17,16 +17,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/user", tags=["user"])
 
 
-@router.get("/services", response_model=List[Service])
+@router.get("/services")
 async def get_my_services(user: dict = Depends(verify_token)):
-    """Get services assigned to the current user"""
+    """Get services and sub-services assigned to the current user (unified list with type field)."""
     try:
         user_id = user.get("id") or user.get("user_id")
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid user token")
         
         services = await supabase_service.get_user_services(user_id)
-        return services
+        sub_services = await supabase_service.get_user_sub_services(user_id)
+        for s in services:
+            s["type"] = "service"
+        return list(services) + list(sub_services)
     except HTTPException:
         raise
     except Exception as e:
@@ -132,6 +135,24 @@ async def get_service_launch_credentials(
         raise
     except Exception as e:
         logger.error(f"Error getting launch credentials: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get launch credentials")
+
+
+@router.get("/sub-services/{sub_service_id}/launch", response_model=LaunchCredentials)
+async def get_sub_service_launch_credentials(sub_service_id: str, user: dict = Depends(verify_token)):
+    """Get credentials for launching a sub-service (parent URL + sub-service credentials)."""
+    try:
+        user_id = user.get("id") or user.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid user token")
+        creds = await supabase_service.get_sub_service_launch_credentials(sub_service_id, user_id)
+        if not creds:
+            raise HTTPException(status_code=403, detail="You don't have access to this sub-service or access has expired")
+        return LaunchCredentials(**creds)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting sub-service launch credentials: {e}")
         raise HTTPException(status_code=500, detail="Failed to get launch credentials")
 
 

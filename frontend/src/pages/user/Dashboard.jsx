@@ -61,7 +61,7 @@ const UserDashboard = () => {
       try {
         setLoading(true);
         if (user?.id) {
-          const res = await servicesService.getUserServices(user.id);
+          const res = await servicesService.getMyServices();
           if (res.success) setUserServices(res.data || []);
 
           const ures = await usersService.getUser(user.id);
@@ -255,7 +255,7 @@ const UserDashboard = () => {
     }
   };
 
-  // Handle service launch
+  // Handle service launch (supports both service and sub_service)
   const handleLaunch = async (service) => {
     if (!user?.id) {
       toast({ variant: 'destructive', title: 'Error', description: 'User not authenticated' });
@@ -264,21 +264,21 @@ const UserDashboard = () => {
 
     setLaunching(service.id);
     try {
-      const credRes = await servicesService.getLaunchCredentials(service.id);
+      const isSubService = service.type === 'sub_service';
+      const credRes = isSubService
+        ? await servicesService.getSubServiceLaunchCredentials(service.id)
+        : await servicesService.getLaunchCredentials(service.id);
 
-      // If credentials API fails or returns no data, it means service has no credentials
-      // This is OKAY - admin chose to disable credentials, so launch without them
-      const credentials = credRes.success && credRes.data ? credRes.data : {
-        username: '',
-        password: ''
-      };
+      const credentials = credRes.success && credRes.data ? credRes.data : { username: '', password: '', service_url: service.url };
+      const url = credentials.service_url || service.url;
 
       if (window.electronAPI?.service?.launch) {
         const result = await window.electronAPI.service.launch({
           serviceId: service.id,
-          url: service.url,
+          url,
           username: credentials.username,
-          password: credentials.password
+          password: credentials.password,
+          userId: user.id
         });
 
         if (result.success) {
@@ -287,11 +287,8 @@ const UserDashboard = () => {
           throw new Error(result.error || 'Failed to launch browser');
         }
       } else {
-        toast({
-          title: 'Opening in browser',
-          description: 'Electron not available, opening in regular browser'
-        });
-        window.open(service.url, '_blank');
+        toast({ title: 'Opening in browser', description: 'Electron not available, opening in regular browser' });
+        window.open(url, '_blank');
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to launch service';
@@ -314,7 +311,7 @@ const UserDashboard = () => {
     setRefreshing(true);
     try {
       if (user?.id) {
-        const res = await servicesService.getUserServices(user.id);
+        const res = await servicesService.getMyServices();
         if (res.success) setUserServices(res.data || []);
 
         const fpRes = await fingerprintsService.getMyProfiles();

@@ -41,7 +41,17 @@ export const API_ENDPOINTS = {
     userServices: (userId: string) => `/api/admin/users/${userId}/services`,
     assignToUser: (userId: string, serviceId: string) => `/api/admin/users/${userId}/services/${serviceId}/assign`,
     unassignFromUser: (userId: string, serviceId: string) => `/api/admin/users/${userId}/services/${serviceId}`,
-    launchCredentials: (serviceId: string) => `/api/user/services/${serviceId}/launch`, // User-facing endpoint
+    launchCredentials: (serviceId: string) => `/api/user/services/${serviceId}/launch`,
+    // Sub-services
+    subServicesList: (serviceId: string) => `/api/admin/services/${serviceId}/sub-services`,
+    subServicesCreate: (serviceId: string) => `/api/admin/services/${serviceId}/sub-services`,
+    subServiceGet: (id: string) => `/api/admin/sub-services/${id}`,
+    subServiceUpdate: (id: string) => `/api/admin/sub-services/${id}`,
+    subServiceDelete: (id: string) => `/api/admin/sub-services/${id}`,
+    userSubServices: (userId: string) => `/api/admin/users/${userId}/sub-services`,
+    assignSubServiceToUser: (userId: string, subServiceId: string) => `/api/admin/users/${userId}/sub-services/${subServiceId}/assign`,
+    unassignSubServiceFromUser: (userId: string, subServiceId: string) => `/api/admin/users/${userId}/sub-services/${subServiceId}`,
+    subServiceLaunchCredentials: (subServiceId: string) => `/api/user/sub-services/${subServiceId}/launch`,
   },
 
   // Credentials - under /api/admin for security

@@ -397,6 +397,51 @@ class LaunchCredentials(BaseModel):
     password: str  # Decrypted password for autofill
 
 
+# Sub-service Models
+class SubService(BaseModel):
+    """Sub-service under a parent service"""
+    id: str
+    service_id: str
+    name: str
+    username: str
+    password_encrypted: str
+    visibility: str = "hidden"
+    created_at: datetime
+    updated_at: datetime
+
+
+class SubServiceCreate(BaseModel):
+    """Create sub-service (password will be encrypted server-side)"""
+    name: str = Field(..., min_length=1, max_length=255)
+    username: str = Field(..., min_length=1, max_length=255)
+    password: str = Field(..., min_length=1)
+    visibility: str = "hidden"
+
+
+class SubServiceUpdate(BaseModel):
+    """Update sub-service (optional fields)"""
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    username: Optional[str] = Field(None, min_length=1, max_length=255)
+    password: Optional[str] = None
+    visibility: Optional[str] = None
+
+
+class UserSubService(BaseModel):
+    """User-sub-service assignment"""
+    id: str
+    user_id: str
+    sub_service_id: str
+    assigned_by: Optional[str] = None
+    expires_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class AssignSubServiceRequest(BaseModel):
+    """Request body for assigning sub-service to user"""
+    duration_days: Optional[int] = None
+    expires_at: Optional[datetime] = None
+
+
 # Behavior Profile Models
 class BehaviorProfileBase(BaseModel):
     """Base behavior profile model"""

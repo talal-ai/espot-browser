@@ -151,6 +151,10 @@ class DevService:
         
         # Mock user proxies (junction table)
         self.mock_user_proxies = []
+
+        # Mock sub-services and user sub-service assignments
+        self.mock_sub_services = []
+        self.mock_user_sub_services = []
     
     # User Management
     async def create_user(self, user_data: UserCreate) -> User:
@@ -332,6 +336,81 @@ class DevService:
         before = len(self.mock_user_services)
         self.mock_user_services = [r for r in self.mock_user_services if not (r["user_id"] == user_id and r["service_id"] == service_id)]
         return len(self.mock_user_services) < before
+
+    # =========================================================================
+    # SUB-SERVICE METHODS (mock)
+    # =========================================================================
+
+    async def create_sub_service(self, service_id: str, data: dict) -> dict:
+        new_id = str(uuid.uuid4())
+        now = datetime.utcnow().isoformat()
+        rec = {"id": new_id, "service_id": service_id, "name": data["name"], "username": data["username"], "password_encrypted": data.get("password_encrypted", ""), "visibility": data.get("visibility", "hidden"), "created_at": now, "updated_at": now}
+        self.mock_sub_services.append(rec)
+        return rec
+
+    async def get_sub_services(self, service_id: str) -> list:
+        return [s for s in self.mock_sub_services if s.get("service_id") == service_id]
+
+    async def get_sub_service(self, sub_service_id: str) -> Optional[dict]:
+        for s in self.mock_sub_services:
+            if s.get("id") == sub_service_id:
+                # Add service_url from mock_services if available
+                svc = next((x for x in self.mock_services if x.get("id") == s.get("service_id")), None)
+                out = dict(s)
+                out["service_url"] = svc.get("url", "") if svc else ""
+                out["service_name"] = svc.get("name", "") if svc else ""
+                return out
+        return None
+
+    async def update_sub_service(self, sub_service_id: str, updates: dict) -> Optional[dict]:
+        for i, s in enumerate(self.mock_sub_services):
+            if s["id"] == sub_service_id:
+                s.update({k: v for k, v in updates.items() if k != "service_id"})
+                s["updated_at"] = datetime.utcnow().isoformat()
+                self.mock_sub_services[i] = s
+                return s
+        return None
+
+    async def delete_sub_service(self, sub_service_id: str) -> bool:
+        before = len(self.mock_sub_services)
+        self.mock_sub_services = [s for s in self.mock_sub_services if s["id"] != sub_service_id]
+        self.mock_user_sub_services = [r for r in self.mock_user_sub_services if r.get("sub_service_id") != sub_service_id]
+        return len(self.mock_sub_services) < before
+
+    async def get_user_sub_services(self, user_id: str) -> list:
+        results = []
+        for rel in self.mock_user_sub_services:
+            if rel.get("user_id") != user_id:
+                continue
+            sub = next((s for s in self.mock_sub_services if s.get("id") == rel.get("sub_service_id")), None)
+            if not sub:
+                continue
+            svc = next((x for x in self.mock_services if x.get("id") == sub.get("service_id")), None)
+            results.append({"id": sub["id"], "name": sub["name"], "url": svc.get("url", "") if svc else "", "status": svc.get("status", "active") if svc else "active", "type": "sub_service", "service_id": sub.get("service_id"), "assigned_at": rel.get("created_at"), "expires_at": rel.get("expires_at"), "assignment_source": "direct"})
+        return results
+
+    async def assign_sub_service_to_user(self, sub_service_id: str, user_id: str, assigned_by: Optional[str] = None, expires_at: Optional[datetime] = None) -> dict:
+        if any(r for r in self.mock_user_sub_services if r["user_id"] == user_id and r["sub_service_id"] == sub_service_id):
+            raise Exception("duplicate assignment")
+        rel = {"id": str(uuid.uuid4()), "user_id": user_id, "sub_service_id": sub_service_id, "assigned_by": assigned_by, "expires_at": expires_at.isoformat() if expires_at else None, "created_at": datetime.utcnow().isoformat()}
+        self.mock_user_sub_services.append(rel)
+        return rel
+
+    async def unassign_sub_service_from_user(self, sub_service_id: str, user_id: str) -> bool:
+        before = len(self.mock_user_sub_services)
+        self.mock_user_sub_services = [r for r in self.mock_user_sub_services if not (r["user_id"] == user_id and r["sub_service_id"] == sub_service_id)]
+        return len(self.mock_user_sub_services) < before
+
+    async def get_sub_service_launch_credentials(self, sub_service_id: str, user_id: str) -> Optional[dict]:
+        if not any(r for r in self.mock_user_sub_services if r["user_id"] == user_id and r["sub_service_id"] == sub_service_id):
+            return None
+        sub = await self.get_sub_service(sub_service_id)
+        if not sub:
+            return None
+        from src.services.encryption_service import encryption_service
+        pw = sub.get("password_encrypted") or ""
+        decrypted = encryption_service.decrypt_password(pw) if pw else ""
+        return {"service_id": sub_service_id, "service_name": sub["name"], "service_url": sub.get("service_url", ""), "username": sub.get("username", ""), "password": decrypted}
 
     # =========================================================================
     # PROXY ASSIGNMENT METHODS

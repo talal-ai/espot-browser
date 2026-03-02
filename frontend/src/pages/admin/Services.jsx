@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, ExternalLink, Key, Eye, EyeOff } from 'lucide-react';
+import { Plus, Edit, Trash2, ExternalLink, Key, Eye, EyeOff, Layers } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
@@ -23,6 +23,14 @@ const Services = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [serviceToDelete, setServiceToDelete] = useState(null);
   const [hasCredentials, setHasCredentials] = useState(true);
+  const [subServicesDialogOpen, setSubServicesDialogOpen] = useState(false);
+  const [subServicesFor, setSubServicesFor] = useState(null);
+  const [subServicesList, setSubServicesList] = useState([]);
+  const [subServicesLoading, setSubServicesLoading] = useState(false);
+  const [subServiceFormOpen, setSubServiceFormOpen] = useState(false);
+  const [editingSubService, setEditingSubService] = useState(null);
+  const [subServiceForm, setSubServiceForm] = useState({ name: '', username: '', password: '', visibility: 'hidden' });
+  const [showSubServicePassword, setShowSubServicePassword] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     url: '',
@@ -124,6 +132,58 @@ const Services = () => {
     setHasCredentials(true);
   };
 
+  const openSubServices = async (service) => {
+    setSubServicesFor(service);
+    setSubServicesDialogOpen(true);
+    setSubServicesLoading(true);
+    const res = await servicesService.getSubServices(service.id);
+    if (res.success) setSubServicesList(res.data || []);
+    setSubServicesLoading(false);
+    setSubServiceFormOpen(false);
+    setEditingSubService(null);
+    setSubServiceForm({ name: '', username: '', password: '', visibility: 'hidden' });
+  };
+
+  const loadSubServices = async () => {
+    if (!subServicesFor) return;
+    const res = await servicesService.getSubServices(subServicesFor.id);
+    if (res.success) setSubServicesList(res.data || []);
+  };
+
+  const handleSubServiceSubmit = async (e) => {
+    e.preventDefault();
+    if (!subServicesFor) return;
+    if (editingSubService) {
+      const payload = { name: subServiceForm.name, username: subServiceForm.username, visibility: subServiceForm.visibility };
+      if (subServiceForm.password) payload.password = subServiceForm.password;
+      const res = await servicesService.updateSubService(editingSubService.id, payload);
+      if (res.success) {
+        toast({ title: 'Sub-service updated' });
+        setSubServiceFormOpen(false);
+        setEditingSubService(null);
+        setSubServiceForm({ name: '', username: '', password: '', visibility: 'hidden' });
+        loadSubServices();
+      }
+    } else {
+      const res = await servicesService.createSubService(subServicesFor.id, subServiceForm);
+      if (res.success) {
+        toast({ title: 'Sub-service created' });
+        setSubServiceFormOpen(false);
+        setSubServiceForm({ name: '', username: '', password: '', visibility: 'hidden' });
+        loadSubServices();
+      }
+    }
+  };
+
+  const handleDeleteSubService = async (sub) => {
+    if (!confirm(`Delete sub-service "${sub.name}"?`)) return;
+    const res = await servicesService.deleteSubService(sub.id);
+    if (res.success) {
+      toast({ title: 'Sub-service deleted' });
+      loadSubServices();
+    }
+  };
+
   const columns = [
     { key: 'name', label: 'Service Name', sortable: true },
     {
@@ -156,6 +216,14 @@ const Services = () => {
       label: 'Actions',
       render: (_, row) => (
         <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            title="Sub-services"
+            onClick={(e) => { e.stopPropagation(); openSubServices(row); }}
+          >
+            <Layers className="w-4 h-4" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -359,6 +427,60 @@ const Services = () => {
       </div>
 
       <DataTable columns={columns} data={services} />
+
+      {/* Sub-services Dialog */}
+      <Dialog open={subServicesDialogOpen} onOpenChange={(open) => { setSubServicesDialogOpen(open); if (!open) setSubServicesFor(null); }}>
+        <DialogContent className="backdrop-blur-xl bg-white/90 dark:bg-gray-900/90 border-gray-200 dark:border-gray-800 max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Sub-services{subServicesFor ? `: ${subServicesFor.name}` : ''}</DialogTitle>
+          </DialogHeader>
+          {subServicesLoading ? (
+            <p className="text-sm text-gray-500">Loading...</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => { setEditingSubService(null); setSubServiceForm({ name: '', username: '', password: '', visibility: 'hidden' }); setSubServiceFormOpen(true); }}>
+                  <Plus className="w-4 h-4 mr-1" /> Add Sub-service
+                </Button>
+              </div>
+              {subServiceFormOpen && (
+                <form onSubmit={handleSubServiceSubmit} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3">
+                  <Input placeholder="Name (e.g. Talal Ring Center)" value={subServiceForm.name} onChange={(e) => setSubServiceForm({ ...subServiceForm, name: e.target.value })} required />
+                  <Input placeholder="Username" value={subServiceForm.username} onChange={(e) => setSubServiceForm({ ...subServiceForm, username: e.target.value })} required />
+                  <Input type={showSubServicePassword ? 'text' : 'password'} placeholder={editingSubService ? 'Leave empty to keep' : 'Password'} value={subServiceForm.password} onChange={(e) => setSubServiceForm({ ...subServiceForm, password: e.target.value })} required={!editingSubService} />
+                  <Select value={subServiceForm.visibility} onValueChange={(v) => setSubServiceForm({ ...subServiceForm, visibility: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hidden">Hidden</SelectItem>
+                      <SelectItem value="visible">Visible</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => { setSubServiceFormOpen(false); setEditingSubService(null); }}>Cancel</Button>
+                    <Button type="submit" size="sm">{editingSubService ? 'Update' : 'Create'}</Button>
+                  </div>
+                </form>
+              )}
+              <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                {subServicesList.map((sub) => (
+                  <li key={sub.id} className="py-2 flex items-center justify-between">
+                    <span className="font-medium">{sub.name}</span>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => { setEditingSubService(sub); setSubServiceForm({ name: sub.name, username: sub.username, password: '', visibility: sub.visibility || 'hidden' }); setSubServiceFormOpen(true); }}>
+                        <Edit className="w-3 h-3" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteSubService(sub)}>
+                        <Trash2 className="w-3 h-3 text-red-500" />
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {subServicesList.length === 0 && !subServiceFormOpen && <p className="text-sm text-gray-500">No sub-services. Add one to assign to users.</p>}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog

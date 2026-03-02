@@ -20,6 +20,14 @@ const API_BASE_URL = process.env.API_BASE_URL ?? (process.env.NODE_ENV === 'deve
 // Check if in development mode
 const isDev = process.env.NODE_ENV === 'development';
 
+function getAppIconPath(): string {
+  const primary = path.join(__dirname, '..', 'assets', 'icon.ico');
+  if (fs.existsSync(primary)) return primary;
+  const fallback = path.join(__dirname, '..', 'icon.ico');
+  if (fs.existsSync(fallback)) return fallback;
+  return primary;
+}
+
 // Enable context menu (Copy, Paste, etc.)
 contextMenu({
   showLookUpSelection: false,
@@ -153,12 +161,7 @@ function createMainWindow() {
       webviewTag: true, // Enable <webview> tag for browser-like tab functionality
       ...(STRICT_WEBRTC_ENABLED ? { webSecurity: true, sandbox: true } : {}),
     },
-    icon: (() => {
-      const iconPath = path.join(__dirname, '../assets/icon.ico');
-      console.log('[ESPOT] Icon path:', iconPath);
-      console.log('[ESPOT] Icon exists:', fs.existsSync(iconPath));
-      return iconPath;
-    })(),
+    icon: getAppIconPath(),
   });
 
   // Load the app
@@ -238,7 +241,7 @@ function createMainWindow() {
             width: 600,
             height: 700,
             show: true,
-            icon: path.join(__dirname, '../assets/icon.ico'),
+            icon: getAppIconPath(),
             webPreferences: {
               nodeIntegration: false,
               contextIsolation: true,
@@ -291,6 +294,7 @@ function createMainWindow() {
             width: 1200,
             height: 800,
             show: true,
+            icon: getAppIconPath(),
             webPreferences: {
               nodeIntegration: false,
               contextIsolation: true,
@@ -310,7 +314,7 @@ function createMainWindow() {
             width: 1200,
             height: 800,
             show: true,
-            icon: path.join(__dirname, '../assets/icon.ico'),
+            icon: getAppIconPath(),
             webPreferences: {
               nodeIntegration: false,
               contextIsolation: true,
@@ -340,7 +344,6 @@ function createMainWindow() {
       }
     })();
 
-    child.loadURL(url);
     return { action: 'deny' };
   });
 
@@ -581,7 +584,7 @@ function setupIpcHandlers() {
       width: 1200,
       height: 800,
       show: true,
-      icon: path.join(__dirname, '../assets/icon.ico'),
+      icon: getAppIconPath(),
       webPreferences,
     });
     
@@ -910,7 +913,7 @@ function setupIpcHandlers() {
         maximizable: false,
         title: 'Sign in with Google',
         show: true,
-        icon: path.join(__dirname, '../assets/icon.ico'),
+        icon: getAppIconPath(),
         webPreferences: {
           nodeIntegration: false,
           contextIsolation: true,
@@ -1103,6 +1106,7 @@ function setupIpcHandlers() {
           width: 1200,
           height: 800,
           show: true,
+          icon: getAppIconPath(),
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -1124,7 +1128,7 @@ function setupIpcHandlers() {
           width: 1200,
           height: 800,
           show: true,
-          icon: path.join(__dirname, '../assets/icon.ico'),
+          icon: getAppIconPath(),
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -1188,6 +1192,7 @@ function setupIpcHandlers() {
           height: 900,
           show: false,  // CRITICAL: Start hidden to prevent any flash
           backgroundColor: '#0a0a0a',
+          icon: getAppIconPath(),
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -1204,7 +1209,7 @@ function setupIpcHandlers() {
           height: 900,
           show: false,
           backgroundColor: '#0a0a0a',
-          icon: path.join(__dirname, '../assets/icon.ico'),
+          icon: getAppIconPath(),
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -2033,6 +2038,7 @@ function createUserWindow(userId: string, url: string = 'about:blank'): BrowserW
     width: 1200,
     height: 800,
     show: true,
+    icon: getAppIconPath(),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

@@ -33,8 +33,13 @@ const Users = () => {
   const [manageOpen, setManageOpen] = useState(false);
   const [availableServices, setAvailableServices] = useState([]);
   const [assignedServices, setAssignedServices] = useState([]);
+  const [assignedSubServices, setAssignedSubServices] = useState([]);
   const [selectedServiceId, setSelectedServiceId] = useState('');
-  const [assignmentDuration, setAssignmentDuration] = useState('30'); // Default 30 days
+  const [assignmentDuration, setAssignmentDuration] = useState('30');
+  const [selectedParentServiceForSub, setSelectedParentServiceForSub] = useState('');
+  const [subServicesOfParent, setSubServicesOfParent] = useState([]);
+  const [selectedSubServiceId, setSelectedSubServiceId] = useState('');
+  const [assigningSub, setAssigningSub] = useState(false);
   const [activeTab, setActiveTab] = useState('details');
   const [servicesPage, setServicesPage] = useState(1);
   const pageSize = 10;
@@ -128,8 +133,12 @@ const Users = () => {
   useEffect(() => {
     const loadAssigned = async () => {
       if (!manageOpen || !editingUser || activeTab !== 'services') return;
-      const res = await servicesService.getUserServices(editingUser.id);
+      const [res, subRes] = await Promise.all([
+        servicesService.getUserServices(editingUser.id),
+        servicesService.getUserSubServices(editingUser.id),
+      ]);
       if (res.success) setAssignedServices(res.data || []);
+      if (subRes.success) setAssignedSubServices(subRes.data || []);
     };
     loadAssigned();
   }, [manageOpen, editingUser, activeTab]);
@@ -152,6 +161,20 @@ const Users = () => {
     const assignedIds = new Set((assignedProxies || []).map((p) => p.id));
     return (availableProxies || []).filter((p) => !assignedIds.has(p.id));
   }, [availableProxies, assignedProxies]);
+
+  useEffect(() => {
+    if (!selectedParentServiceForSub) {
+      setSubServicesOfParent([]);
+      setSelectedSubServiceId('');
+      return;
+    }
+    const load = async () => {
+      const res = await servicesService.getSubServices(selectedParentServiceForSub);
+      if (res.success) setSubServicesOfParent(res.data || []);
+      setSelectedSubServiceId('');
+    };
+    load();
+  }, [selectedParentServiceForSub]);
 
   const resetForm = () => {
     setFormData({
@@ -506,18 +529,16 @@ const Users = () => {
                             const result = await servicesService.assignServiceToUser(
                               selectedServiceId, 
                               editingUser.id, 
-                              undefined, // assignedBy
-                              parseInt(assignmentDuration) // durationDays
+                              undefined,
+                              parseInt(assignmentDuration)
                             );
                             if (result.success) {
-                              const t = toast({ title: 'Service assigned', description: selected ? `${selected.name} assigned to ${editingUser.username || editingUser.email}` : 'Assigned' });
-                              setTimeout(() => t.dismiss(), 5000);
+                              toast({ title: 'Service assigned', description: selected ? `${selected.name} assigned` : 'Assigned' });
                               const res = await servicesService.getUserServices(editingUser.id);
                               if (res.success) setAssignedServices(res.data || []);
                               setSelectedServiceId('');
                             }
                           } catch (err) {
-                            console.error('Assign error', err);
                             const msg = (err?.response?.data?.detail) || 'Could not assign service';
                             toast({ variant: 'destructive', title: 'Assignment failed', description: msg });
                           } finally {
@@ -527,8 +548,48 @@ const Users = () => {
                       >Assign</Button>
                     </div>
                   </div>
-                  <div>
-                    <Label>Assigned Services</Label>
+                  <div className="space-y-2">
+                    <Label>Assign Sub-service</Label>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                      <Select value={selectedParentServiceForSub} onValueChange={setSelectedParentServiceForSub}>
+                        <SelectTrigger><SelectValue placeholder="Parent service" /></SelectTrigger>
+                        <SelectContent>
+                          {availableServices.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={selectedSubServiceId} onValueChange={setSelectedSubServiceId} disabled={!selectedParentServiceForSub}>
+                        <SelectTrigger><SelectValue placeholder="Sub-service" /></SelectTrigger>
+                        <SelectContent>
+                          {(subServicesOfParent || []).filter((sub) => !(assignedSubServices || []).some((a) => a.id === sub.id)).map((sub) => (
+                            <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        disabled={!selectedSubServiceId || !editingUser || assigningSub}
+                        onClick={async () => {
+                          if (!editingUser) return;
+                          setAssigningSub(true);
+                          try {
+                            const result = await servicesService.assignSubServiceToUser(selectedSubServiceId, editingUser.id, { duration_days: parseInt(assignmentDuration) });
+                            if (result.success) {
+                              toast({ title: 'Sub-service assigned' });
+                              const subRes = await servicesService.getUserSubServices(editingUser.id);
+                              if (subRes.success) setAssignedSubServices(subRes.data || []);
+                              setSelectedSubServiceId('');
+                            }
+                          } catch (err) {
+                            const msg = (err?.response?.data?.detail) || 'Could not assign sub-service';
+                            toast({ variant: 'destructive', title: 'Assignment failed', description: msg });
+                          } finally {
+                            setAssigningSub(false);
+                          }
+                        }}
+                      >Assign</Button>
+                    </div>
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>Assigned Services & Sub-services</Label>
                     <div className="space-y-3">
                       <div className="flex flex-wrap gap-2 items-center">
                         <div className="relative flex-1 min-w-[200px]">
@@ -554,43 +615,62 @@ const Users = () => {
                         </Select>
                       </div>
                       <div className="space-y-2 max-h-64 overflow-auto">
-                        {servicesLoading && <div className="p-4 text-sm text-gray-500">Loading services...</div>}
-                        {assignedServices
+                        {servicesLoading && <div className="p-4 text-sm text-gray-500">Loading...</div>}
+                        {[
+                          ...(assignedServices || []).map((s) => ({ ...s, _type: 'service' })),
+                          ...(assignedSubServices || []).map((s) => ({ ...s, _type: 'sub_service' })),
+                        ]
                           .filter((s) => (serviceStatus === 'all' || s.status === serviceStatus))
                           .filter((s) => s.name?.toLowerCase().includes(serviceQuery.toLowerCase()))
                           .sort((a, b) => {
                             const k = serviceSort.key;
-                            const av = a[k] || '';
-                            const bv = b[k] || '';
+                            const av = a[k] != null ? a[k] : (a.assigned_at ?? '');
+                            const bv = b[k] != null ? b[k] : (b.assigned_at ?? '');
                             const cmp = (k === 'assigned_at' ? new Date(av).getTime() - new Date(bv).getTime() : String(av).localeCompare(String(bv)));
                             return serviceSort.order === 'asc' ? cmp : -cmp;
                           })
                           .slice((servicesPage - 1) * pageSize, servicesPage * pageSize)
                           .map((s) => (
-                            <div key={s.id} className="p-3 rounded border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/60">
+                            <div key={s._type + '-' + s.id} className="p-3 rounded border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/60">
                               <div className="flex items-center justify-between">
                                 <div>
-                                  <div className="font-medium">{s.name}</div>
-                                  <div className="text-xs text-gray-500">Assigned: {s.assigned_at ? new Date(s.assigned_at).toLocaleString() : '—'} • Status: {s.status}</div>
+                                  <div className="font-medium flex items-center gap-2">
+                                    {s.name}
+                                    {s._type === 'sub_service' && <Badge variant="secondary" className="text-xs">Sub-service</Badge>}
+                                  </div>
+                                  <div className="text-xs text-gray-500">Assigned: {s.assigned_at ? new Date(s.assigned_at).toLocaleString() : '—'} • Status: {s.status || 'active'}</div>
                                 </div>
                                 <div className="flex gap-2">
-                                  <Button variant="outline" size="sm" onClick={async () => {
-                                    const result = await servicesService.unassignServiceFromUser(s.id, editingUser.id);
-                                    if (result.success) {
-                                      const res = await servicesService.getUserServices(editingUser.id);
-                                      if (res.success) setAssignedServices(res.data || []);
-                                    } else {
-                                      toast({ variant: 'destructive', title: 'Unassign failed', description: 'Could not unassign service' });
-                                    }
-                                  }}>Unassign</Button>
+                                  {s._type === 'service' ? (
+                                    <Button variant="outline" size="sm" onClick={async () => {
+                                      const result = await servicesService.unassignServiceFromUser(s.id, editingUser.id);
+                                      if (result.success) {
+                                        const [res, subRes] = await Promise.all([servicesService.getUserServices(editingUser.id), servicesService.getUserSubServices(editingUser.id)]);
+                                        if (res.success) setAssignedServices(res.data || []);
+                                        if (subRes.success) setAssignedSubServices(subRes.data || []);
+                                      } else {
+                                        toast({ variant: 'destructive', title: 'Unassign failed' });
+                                      }
+                                    }}>Unassign</Button>
+                                  ) : (
+                                    <Button variant="outline" size="sm" onClick={async () => {
+                                      const result = await servicesService.unassignSubServiceFromUser(s.id, editingUser.id);
+                                      if (result.success) {
+                                        const subRes = await servicesService.getUserSubServices(editingUser.id);
+                                        if (subRes.success) setAssignedSubServices(subRes.data || []);
+                                      } else {
+                                        toast({ variant: 'destructive', title: 'Unassign failed' });
+                                      }
+                                    }}>Unassign</Button>
+                                  )}
                                 </div>
                               </div>
                             </div>
                           ))}
-                        {assignedServices.length > pageSize && (
+                        {(assignedServices?.length || 0) + (assignedSubServices?.length || 0) > pageSize && (
                           <div className="flex justify-end gap-2 pt-2">
                             <Button variant="outline" size="sm" disabled={servicesPage === 1} onClick={() => setServicesPage((p) => Math.max(1, p - 1))}>Prev</Button>
-                            <Button variant="outline" size="sm" disabled={servicesPage * pageSize >= assignedServices.length} onClick={() => setServicesPage((p) => p + 1)}>Next</Button>
+                            <Button variant="outline" size="sm" disabled={servicesPage * pageSize >= (assignedServices?.length || 0) + (assignedSubServices?.length || 0)} onClick={() => setServicesPage((p) => p + 1)}>Next</Button>
                           </div>
                         )}
                       </div>

@@ -1,7 +1,7 @@
 {
   "name": "espot-browser-desktop",
   "productName": "Espot Browser Desktop",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "ESPOT Browser Desktop Application",
   "main": "dist-electron/main.js",
   "homepage": "./",
@@ -167,7 +167,7 @@
         }
       ],
       "icon": "assets/icon.ico",
-      "signAndEditExecutable": false,
+      "signAndEditExecutable": true,
       "artifactName": "${productName}-${version}-${arch}-Setup.${ext}",
       "compression": "normal"
     },

@@ -1571,7 +1571,188 @@ class SupabaseService:
         except Exception as e:
             logger.error(f"Error checking user service access: {e}")
             return False
-    
+
+    # =========================================================================
+    # SUB-SERVICE METHODS
+    # =========================================================================
+
+    async def create_sub_service(self, service_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a sub-service under a parent service (password must already be encrypted)."""
+        if self.is_dev_mode:
+            return await dev_service.create_sub_service(service_id, data)
+        try:
+            payload = {
+                "service_id": service_id,
+                "name": data["name"],
+                "username": data["username"],
+                "password_encrypted": data["password_encrypted"],
+                "visibility": data.get("visibility", "hidden"),
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+            response = self.client.table("sub_services").insert(payload).execute()
+            if response.data:
+                return response.data[0]
+            raise Exception("Failed to create sub-service")
+        except Exception as e:
+            logger.error(f"Error creating sub-service: {e}")
+            raise
+
+    async def get_sub_services(self, service_id: str) -> List[Dict[str, Any]]:
+        """List sub-services for a service."""
+        if self.is_dev_mode:
+            return await dev_service.get_sub_services(service_id)
+        try:
+            response = self.client.table("sub_services").select("*").eq("service_id", service_id).execute()
+            return response.data or []
+        except Exception as e:
+            logger.error(f"Error getting sub-services for service {service_id}: {e}")
+            return []
+
+    async def get_sub_service(self, sub_service_id: str) -> Optional[Dict[str, Any]]:
+        """Get a single sub-service; optionally join parent service for url."""
+        if self.is_dev_mode:
+            return await dev_service.get_sub_service(sub_service_id)
+        try:
+            response = self.client.table("sub_services").select("*, services(id, name, url, status)").eq("id", sub_service_id).limit(1).execute()
+            if response.data:
+                row = response.data[0]
+                svc = row.pop("services", None)
+                if svc:
+                    row["service_url"] = svc.get("url")
+                    row["service_name"] = svc.get("name")
+                    row["service_status"] = svc.get("status")
+                return row
+            return None
+        except Exception as e:
+            logger.error(f"Error getting sub-service {sub_service_id}: {e}")
+            raise
+
+    async def update_sub_service(self, sub_service_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update a sub-service (updates may include password_encrypted)."""
+        if self.is_dev_mode:
+            return await dev_service.update_sub_service(sub_service_id, updates)
+        try:
+            updates["updated_at"] = datetime.utcnow().isoformat()
+            # Don't pass service_id in updates
+            updates.pop("service_id", None)
+            response = self.client.table("sub_services").update(updates).eq("id", sub_service_id).execute()
+            if response.data:
+                return response.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error updating sub-service {sub_service_id}: {e}")
+            raise
+
+    async def delete_sub_service(self, sub_service_id: str) -> bool:
+        """Delete a sub-service."""
+        if self.is_dev_mode:
+            return await dev_service.delete_sub_service(sub_service_id)
+        try:
+            self.client.table("sub_services").delete().eq("id", sub_service_id).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting sub-service {sub_service_id}: {e}")
+            raise
+
+    async def get_user_sub_services(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get all sub-services assigned to a user (direct only for now). Returns list of dicts with id, name, url (from parent), type='sub_service', assigned_at, expires_at."""
+        if self.is_dev_mode:
+            return await dev_service.get_user_sub_services(user_id)
+        try:
+            response = self.client.table("user_sub_services").select(
+                "created_at, expires_at, sub_services(id, name, username, service_id, visibility, services(id, name, url, status))"
+            ).eq("user_id", user_id).execute()
+            results = []
+            for row in (response.data or []):
+                sub = row.get("sub_services")
+                if not sub:
+                    continue
+                svc = sub.pop("services", None) if isinstance(sub, dict) else None
+                url = svc.get("url") if svc else ""
+                status = svc.get("status", "active") if svc else "active"
+                results.append({
+                    "id": sub["id"],
+                    "name": sub["name"],
+                    "url": url,
+                    "status": status,
+                    "type": "sub_service",
+                    "service_id": sub.get("service_id"),
+                    "assigned_at": row.get("created_at"),
+                    "expires_at": row.get("expires_at"),
+                    "assignment_source": "direct",
+                })
+            return results
+        except Exception as e:
+            logger.error(f"Error getting user sub-services for {user_id}: {e}")
+            return []
+
+    async def assign_sub_service_to_user(self, sub_service_id: str, user_id: str, assigned_by: Optional[str] = None, expires_at: Optional[datetime] = None) -> Dict[str, Any]:
+        """Assign a sub-service to a user."""
+        if self.is_dev_mode:
+            return await dev_service.assign_sub_service_to_user(sub_service_id, user_id, assigned_by, expires_at)
+        try:
+            payload = {"sub_service_id": sub_service_id, "user_id": user_id}
+            if assigned_by:
+                payload["assigned_by"] = assigned_by
+            if expires_at:
+                payload["expires_at"] = expires_at.isoformat()
+            response = self.admin_client.table("user_sub_services").upsert(payload, on_conflict="user_id,sub_service_id").execute()
+            if response.data:
+                return response.data[0]
+            check = self.admin_client.table("user_sub_services").select("*").eq("user_id", user_id).eq("sub_service_id", sub_service_id).limit(1).execute()
+            if check.data:
+                return check.data[0]
+            raise Exception("Failed to assign sub-service")
+        except Exception as e:
+            logger.error(f"Error assigning sub-service {sub_service_id} to user {user_id}: {e}")
+            raise
+
+    async def unassign_sub_service_from_user(self, sub_service_id: str, user_id: str) -> bool:
+        """Unassign a sub-service from a user."""
+        if self.is_dev_mode:
+            return await dev_service.unassign_sub_service_from_user(sub_service_id, user_id)
+        try:
+            self.admin_client.table("user_sub_services").delete().eq("user_id", user_id).eq("sub_service_id", sub_service_id).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Error unassigning sub-service {sub_service_id} from user {user_id}: {e}")
+            raise
+
+    async def get_sub_service_launch_credentials(self, sub_service_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get launch credentials for a sub-service: parent service URL + sub-service username/decrypted password. Verifies user is assigned and not expired."""
+        if self.is_dev_mode:
+            return await dev_service.get_sub_service_launch_credentials(sub_service_id, user_id)
+        try:
+            # Verify assignment
+            assign_response = self.client.table("user_sub_services").select("expires_at").eq("user_id", user_id).eq("sub_service_id", sub_service_id).limit(1).execute()
+            if not assign_response.data:
+                return None
+            row = assign_response.data[0]
+            expires_at = row.get("expires_at")
+            if expires_at:
+                if isinstance(expires_at, str):
+                    expires_at = expires_at.replace("Z", "+00:00")
+                    from datetime import datetime as dt
+                    expires_dt = dt.fromisoformat(expires_at)
+                else:
+                    expires_dt = expires_at
+                if expires_dt and datetime.utcnow().replace(tzinfo=expires_dt.tzinfo) > expires_dt:
+                    return None
+            # Load sub_service with parent service
+            sub = await self.get_sub_service(sub_service_id)
+            if not sub or not sub.get("service_url"):
+                return None
+            encrypted = sub.get("password_encrypted") or sub.get("password")
+            if not encrypted:
+                return {"service_id": sub_service_id, "service_name": sub["name"], "service_url": sub["service_url"], "username": sub.get("username", ""), "password": ""}
+            from src.services.encryption_service import encryption_service
+            decrypted = encryption_service.decrypt_password(encrypted)
+            return {"service_id": sub_service_id, "service_name": sub["name"], "service_url": sub["service_url"], "username": sub.get("username", ""), "password": decrypted}
+        except Exception as e:
+            logger.error(f"Error getting sub-service launch credentials: {e}")
+            raise
+
     # Storage Management for Chat Attachments
     async def upload_chat_attachment(self, file_data: bytes, file_name: str, conversation_id: str, message_id: str, content_type: str) -> str:
         """Upload a chat attachment to Supabase Storage"""
