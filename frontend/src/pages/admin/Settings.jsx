@@ -184,7 +184,7 @@ const Settings = () => {
                 <div className="flex items-center justify-between py-4 border-b border-gray-200 dark:border-gray-800">
                   <div>
                     <h3 className="font-medium text-gray-900 dark:text-white">Automatic Login</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Auto-fill credentials for assigned services</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Auto-fill credentials for assigned panels</p>
                   </div>
                   <Switch checked={autoLogin} onCheckedChange={setAutoLogin} />
                 </div>

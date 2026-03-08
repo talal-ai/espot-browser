@@ -68,7 +68,7 @@ const api = {
 
   // Service Launch API (for autofill)
   service: {
-    launch: (launchData: { serviceId: string; url: string; username: string; password: string }) =>
+    launch: (launchData: { serviceId: string; url: string; username: string; password: string; userId?: string; showUrlBar?: boolean }) =>
       ipcRenderer.invoke('service:launch', launchData),
   },
 

@@ -443,7 +443,7 @@ const Users = () => {
           <div className="space-y-6">
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setActiveTab('details')}><Cog className="w-4 h-4 mr-2" />Details</Button>
-              <Button variant="outline" onClick={() => setActiveTab('services')}><Cog className="w-4 h-4 mr-2" />Services</Button>
+              <Button variant="outline" onClick={() => setActiveTab('services')}><Cog className="w-4 h-4 mr-2" />Panels</Button>
               <Button variant="outline" onClick={() => setActiveTab('proxies')}><Cog className="w-4 h-4 mr-2" />Proxies</Button>
               <Button variant="outline" onClick={() => setActiveTab('profiles')}><Fingerprint className="w-4 h-4 mr-2" />Profiles</Button>
               <Button variant="outline" onClick={() => setActiveTab('devices')}><Monitor className="w-4 h-4 mr-2" />Devices</Button>
@@ -501,10 +501,10 @@ const Users = () => {
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Assign New Service</Label>
+                    <Label>Assign New Panel</Label>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                       <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
-                        <SelectTrigger><SelectValue placeholder="Select a service" /></SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Select a panel" /></SelectTrigger>
                         <SelectContent>
                           {unassignedServices.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
                         </SelectContent>
@@ -533,13 +533,13 @@ const Users = () => {
                               parseInt(assignmentDuration)
                             );
                             if (result.success) {
-                              toast({ title: 'Service assigned', description: selected ? `${selected.name} assigned` : 'Assigned' });
+                              toast({ title: 'Panel assigned', description: selected ? `${selected.name} assigned` : 'Assigned' });
                               const res = await servicesService.getUserServices(editingUser.id);
                               if (res.success) setAssignedServices(res.data || []);
                               setSelectedServiceId('');
                             }
                           } catch (err) {
-                            const msg = (err?.response?.data?.detail) || 'Could not assign service';
+                            const msg = (err?.response?.data?.detail) || 'Could not assign panel';
                             toast({ variant: 'destructive', title: 'Assignment failed', description: msg });
                           } finally {
                             setAssigning(false);
@@ -549,7 +549,7 @@ const Users = () => {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label>Assign Sub-service</Label>
+                    <Label>Assign Sub panel</Label>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                       <Select value={selectedParentServiceForSub} onValueChange={setSelectedParentServiceForSub}>
                         <SelectTrigger><SelectValue placeholder="Parent service" /></SelectTrigger>
@@ -558,7 +558,7 @@ const Users = () => {
                         </SelectContent>
                       </Select>
                       <Select value={selectedSubServiceId} onValueChange={setSelectedSubServiceId} disabled={!selectedParentServiceForSub}>
-                        <SelectTrigger><SelectValue placeholder="Sub-service" /></SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Sub panel" /></SelectTrigger>
                         <SelectContent>
                           {(subServicesOfParent || []).filter((sub) => !(assignedSubServices || []).some((a) => a.id === sub.id)).map((sub) => (
                             <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
@@ -573,13 +573,13 @@ const Users = () => {
                           try {
                             const result = await servicesService.assignSubServiceToUser(selectedSubServiceId, editingUser.id, { duration_days: parseInt(assignmentDuration) });
                             if (result.success) {
-                              toast({ title: 'Sub-service assigned' });
+                              toast({ title: 'Sub panel assigned' });
                               const subRes = await servicesService.getUserSubServices(editingUser.id);
                               if (subRes.success) setAssignedSubServices(subRes.data || []);
                               setSelectedSubServiceId('');
                             }
                           } catch (err) {
-                            const msg = (err?.response?.data?.detail) || 'Could not assign sub-service';
+                            const msg = (err?.response?.data?.detail) || 'Could not assign sub panel';
                             toast({ variant: 'destructive', title: 'Assignment failed', description: msg });
                           } finally {
                             setAssigningSub(false);

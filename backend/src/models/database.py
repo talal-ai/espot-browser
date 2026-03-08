@@ -294,6 +294,7 @@ class Service(BaseModel):
     url: str
     category: Optional[str] = None
     status: str
+    show_url_bar: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -382,6 +383,7 @@ class ServiceCreateWithCredential(BaseModel):
     url: str
     category: Optional[str] = None
     status: str = "active"
+    show_url_bar: bool = False
     # Credential fields
     username: Optional[str] = None
     password: Optional[str] = None
@@ -395,6 +397,8 @@ class LaunchCredentials(BaseModel):
     service_url: str
     username: str
     password: str  # Decrypted password for autofill
+    show_url_bar: bool = False
+
 
 
 # Sub-service Models

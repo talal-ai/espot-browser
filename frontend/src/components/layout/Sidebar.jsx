@@ -46,7 +46,7 @@ const Sidebar = () => {
       { icon: LayoutDashboard, label: 'Dashboard', path: '/admin' },
       { icon: Users, label: 'Users', path: '/admin/users' },
       { icon: Users, label: 'Groups', path: '/admin/groups' },
-      { icon: AppWindow, label: 'Services', path: '/admin/services' },
+      { icon: AppWindow, label: 'Panels', path: '/admin/services' },
       { icon: Key, label: 'Credentials', path: '/admin/credentials' },
       { icon: Wifi, label: 'Proxies', path: '/admin/proxies' },
       { icon: Fingerprint, label: 'Fingerprints', path: '/admin/fingerprints' },
@@ -57,7 +57,7 @@ const Sidebar = () => {
     : [
       { icon: LayoutDashboard, label: 'Dashboard', path: '/user' },
       { icon: AppWindow, label: 'Conversations', path: '/user/conversations' },
-      { icon: AppWindow, label: 'Services', path: '/user/services' },
+      { icon: AppWindow, label: 'Panels', path: '/user/services' },
       { icon: Settings, label: 'Settings', path: '/user/settings' }
     ];
 

@@ -56,13 +56,22 @@ const UserDashboard = () => {
 
   const [now, setNow] = useState(new Date());
 
+  const filterLaunchableServices = (items) => {
+    const current = new Date();
+    return (items || []).filter((s) => {
+      if (s.status !== 'active') return false;
+      if (s.expires_at && new Date(s.expires_at) < current) return false;
+      return true;
+    });
+  };
+
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
         if (user?.id) {
           const res = await servicesService.getMyServices();
-          if (res.success) setUserServices(res.data || []);
+          if (res.success) setUserServices(filterLaunchableServices(res.data));
 
           const ures = await usersService.getUser(user.id);
           if (ures.success) setUserDetails(ures.data);
@@ -269,8 +278,23 @@ const UserDashboard = () => {
         ? await servicesService.getSubServiceLaunchCredentials(service.id)
         : await servicesService.getLaunchCredentials(service.id);
 
-      const credentials = credRes.success && credRes.data ? credRes.data : { username: '', password: '', service_url: service.url };
+      if (!credRes.success) {
+        const errMsg = credRes.error?.message || 'Unable to access this service';
+        toast({ variant: 'destructive', title: 'Access denied', description: errMsg });
+        return;
+      }
+
+      const credentials = credRes.data || { username: '', password: '', service_url: service.url };
       const url = credentials.service_url || service.url;
+      const resolvedShowUrlBar = credentials.show_url_bar ?? service.show_url_bar ?? false;
+
+      console.log('[ServiceLaunch] resolved URL bar flag', {
+        serviceId: service.id,
+        serviceName: service.name,
+        fromCredentials: credentials.show_url_bar,
+        fromServiceList: service.show_url_bar,
+        resolvedShowUrlBar,
+      });
 
       if (window.electronAPI?.service?.launch) {
         const result = await window.electronAPI.service.launch({
@@ -278,7 +302,8 @@ const UserDashboard = () => {
           url,
           username: credentials.username,
           password: credentials.password,
-          userId: user.id
+          userId: user.id,
+          showUrlBar: resolvedShowUrlBar,
         });
 
         if (result.success) {
@@ -312,7 +337,7 @@ const UserDashboard = () => {
     try {
       if (user?.id) {
         const res = await servicesService.getMyServices();
-        if (res.success) setUserServices(res.data || []);
+        if (res.success) setUserServices(filterLaunchableServices(res.data));
 
         const fpRes = await fingerprintsService.getMyProfiles();
         if (fpRes.success) {

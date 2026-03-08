@@ -44,7 +44,12 @@ const UserServices = () => {
       if (!user?.id) return;
       const res = await servicesService.getMyServices();
       if (res.success) {
-        setServices((res.data || []).filter((s) => s.status === 'active'));
+        const now = new Date();
+        setServices((res.data || []).filter((s) => {
+          if (s.status !== 'active') return false;
+          if (s.expires_at && new Date(s.expires_at) < now) return false;
+          return true;
+        }));
       } else {
         setError(res.error?.message || 'Failed to load services');
         toast({ variant: 'destructive', title: 'Error', description: res.error?.message || 'Failed to load services' });
@@ -84,8 +89,22 @@ const UserServices = () => {
         ? await servicesService.getSubServiceLaunchCredentials(service.id)
         : await servicesService.getLaunchCredentials(service.id);
 
-      const credentials = credRes.success && credRes.data ? credRes.data : { username: '', password: '', service_url: service.url };
+      if (!credRes.success) {
+        const errMsg = credRes.error?.message || 'Unable to access this service';
+        toast({ variant: 'destructive', title: 'Access denied', description: errMsg });
+        return;
+      }
+      const credentials = credRes.data || { username: '', password: '', service_url: service.url };
       const url = credentials.service_url || service.url;
+      const resolvedShowUrlBar = credentials.show_url_bar ?? service.show_url_bar ?? false;
+
+      console.log('[ServiceLaunch] resolved URL bar flag', {
+        serviceId: service.id,
+        serviceName: service.name,
+        fromCredentials: credentials.show_url_bar,
+        fromServiceList: service.show_url_bar,
+        resolvedShowUrlBar,
+      });
 
       if (window.electronAPI?.service?.launch) {
         const result = await window.electronAPI.service.launch({
@@ -93,7 +112,8 @@ const UserServices = () => {
           url,
           username: credentials.username,
           password: credentials.password,
-          userId: user.id
+          userId: user.id,
+          showUrlBar: resolvedShowUrlBar,
         });
 
         if (result.success) {
@@ -131,7 +151,7 @@ const UserServices = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">My Services</h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">My Panels</h1>
           <p className="text-gray-600 dark:text-gray-400">
             Launch secure browsers with auto-login
           </p>

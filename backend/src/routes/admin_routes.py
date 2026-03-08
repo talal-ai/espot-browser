@@ -245,7 +245,8 @@ async def create_service(service: ServiceCreateWithCredential, admin=Depends(get
             "name": service.name,
             "url": service.url,
             "category": service.category,
-            "status": service.status or "active"
+            "status": service.status or "active",
+            "show_url_bar": service.show_url_bar,
         }
         created = await supabase_service.create_service(service_data)
         
@@ -293,7 +294,8 @@ async def update_service(service_id: str, service_update: ServiceCreateWithCrede
             "name": service_update.name,
             "url": service_update.url,
             "category": service_update.category,
-            "status": service_update.status or "active"
+            "status": service_update.status or "active",
+            "show_url_bar": service_update.show_url_bar,
         }
         updated = await supabase_service.update_service(service_id, service_data)
         if not updated:

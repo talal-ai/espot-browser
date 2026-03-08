@@ -611,7 +611,18 @@ class SupabaseService:
     
     async def get_session(self, session_id: str) -> Optional[Session]:
         """Get session by ID"""
-        # ... (keep existing get_session)
+        try:
+            response = self.client.table("user_sessions").select("*, user:users(username,email)").eq("id", session_id).single().execute()
+            if response.data:
+                row = response.data
+                if isinstance(row, dict) and row.get("user"):
+                    row["username"] = row["user"].get("username")
+                    row.pop("user", None)
+                return Session(**row)
+            return None
+        except Exception as e:
+            logger.error(f"Error getting session {session_id}: {e}")
+            return None
 
     async def get_sessions(self, skip: int = 0, limit: int = 100, user_id: Optional[str] = None) -> List[Session]:
         """Get all sessions with optional user filter"""
@@ -1614,7 +1625,7 @@ class SupabaseService:
         if self.is_dev_mode:
             return await dev_service.get_sub_service(sub_service_id)
         try:
-            response = self.client.table("sub_services").select("*, services(id, name, url, status)").eq("id", sub_service_id).limit(1).execute()
+            response = self.client.table("sub_services").select("*, services(id, name, url, status, show_url_bar)").eq("id", sub_service_id).limit(1).execute()
             if response.data:
                 row = response.data[0]
                 svc = row.pop("services", None)
@@ -1622,6 +1633,7 @@ class SupabaseService:
                     row["service_url"] = svc.get("url")
                     row["service_name"] = svc.get("name")
                     row["service_status"] = svc.get("status")
+                    row["show_url_bar"] = bool(svc.get("show_url_bar", False))
                 return row
             return None
         except Exception as e:
@@ -1744,11 +1756,12 @@ class SupabaseService:
             if not sub or not sub.get("service_url"):
                 return None
             encrypted = sub.get("password_encrypted") or sub.get("password")
+            show_url_bar = bool(sub.get("show_url_bar", False))
             if not encrypted:
-                return {"service_id": sub_service_id, "service_name": sub["name"], "service_url": sub["service_url"], "username": sub.get("username", ""), "password": ""}
+                return {"service_id": sub_service_id, "service_name": sub["name"], "service_url": sub["service_url"], "username": sub.get("username", ""), "password": "", "show_url_bar": show_url_bar}
             from src.services.encryption_service import encryption_service
             decrypted = encryption_service.decrypt_password(encrypted)
-            return {"service_id": sub_service_id, "service_name": sub["name"], "service_url": sub["service_url"], "username": sub.get("username", ""), "password": decrypted}
+            return {"service_id": sub_service_id, "service_name": sub["name"], "service_url": sub["service_url"], "username": sub.get("username", ""), "password": decrypted, "show_url_bar": show_url_bar}
         except Exception as e:
             logger.error(f"Error getting sub-service launch credentials: {e}")
             raise

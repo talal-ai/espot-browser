@@ -36,6 +36,7 @@ const Services = () => {
     url: '',
     category: '',
     status: 'active',
+    show_url_bar: false,
     // Credential fields
     username: '',
     password: '',
@@ -65,7 +66,7 @@ const Services = () => {
     if (editingService) {
       const res = await servicesService.updateService(editingService.id, submissionData);
       if (res.success) {
-        toast({ title: 'Service updated successfully' });
+        toast({ title: 'Panel updated successfully' });
         setIsDialogOpen(false);
         resetForm();
         loadServices();
@@ -73,7 +74,7 @@ const Services = () => {
     } else {
       const res = await servicesService.createService(submissionData);
       if (res.success) {
-        toast({ title: 'Service created successfully' });
+        toast({ title: 'Panel created successfully' });
         setIsDialogOpen(false);
         resetForm();
         loadServices();
@@ -90,7 +91,7 @@ const Services = () => {
     if (serviceToDelete) {
       const res = await servicesService.deleteService(serviceToDelete.id);
       if (res.success) {
-        toast({ title: 'Service deleted successfully' });
+        toast({ title: 'Panel deleted successfully' });
         loadServices();
       }
       setServiceToDelete(null);
@@ -109,6 +110,7 @@ const Services = () => {
       url: service.url,
       category: service.category,
       status: service.status,
+      show_url_bar: service.show_url_bar ?? false,
       username: credential.username || '',
       password: '', // Don't load encrypted password, user can enter new one
       visibility: credential.visibility || 'hidden'
@@ -123,6 +125,7 @@ const Services = () => {
       url: '',
       category: '',
       status: 'active',
+      show_url_bar: false,
       username: '',
       password: '',
       visibility: 'hidden'
@@ -158,7 +161,7 @@ const Services = () => {
       if (subServiceForm.password) payload.password = subServiceForm.password;
       const res = await servicesService.updateSubService(editingSubService.id, payload);
       if (res.success) {
-        toast({ title: 'Sub-service updated' });
+        toast({ title: 'Sub panel updated' });
         setSubServiceFormOpen(false);
         setEditingSubService(null);
         setSubServiceForm({ name: '', username: '', password: '', visibility: 'hidden' });
@@ -167,7 +170,7 @@ const Services = () => {
     } else {
       const res = await servicesService.createSubService(subServicesFor.id, subServiceForm);
       if (res.success) {
-        toast({ title: 'Sub-service created' });
+        toast({ title: 'Sub panel created' });
         setSubServiceFormOpen(false);
         setSubServiceForm({ name: '', username: '', password: '', visibility: 'hidden' });
         loadSubServices();
@@ -176,16 +179,16 @@ const Services = () => {
   };
 
   const handleDeleteSubService = async (sub) => {
-    if (!confirm(`Delete sub-service "${sub.name}"?`)) return;
+    if (!confirm(`Delete sub panel "${sub.name}"?`)) return;
     const res = await servicesService.deleteSubService(sub.id);
     if (res.success) {
-      toast({ title: 'Sub-service deleted' });
+      toast({ title: 'Sub panel deleted' });
       loadSubServices();
     }
   };
 
   const columns = [
-    { key: 'name', label: 'Service Name', sortable: true },
+    { key: 'name', label: 'Panel Name', sortable: true },
     {
       key: 'url',
       label: 'URL',
@@ -219,7 +222,7 @@ const Services = () => {
           <Button
             variant="ghost"
             size="icon"
-            title="Sub-services"
+            title="Sub panels"
             onClick={(e) => { e.stopPropagation(); openSubServices(row); }}
           >
             <Layers className="w-4 h-4" />
@@ -260,23 +263,23 @@ const Services = () => {
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Service Management</h1>
-          <p className="text-gray-600 dark:text-gray-400">Manage and assign services to users</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Panel Management</h1>
+          <p className="text-gray-600 dark:text-gray-400">Manage and assign panels to users</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
           <DialogTrigger asChild>
             <Button className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/30">
               <Plus className="w-4 h-4 mr-2" />
-              Add Service
+              Add Panel
             </Button>
           </DialogTrigger>
           <DialogContent className="backdrop-blur-xl bg-white/90 dark:bg-gray-900/90 border-gray-200 dark:border-gray-800">
             <DialogHeader>
-              <DialogTitle>{editingService ? 'Edit Service' : 'Add New Service'}</DialogTitle>
+              <DialogTitle>{editingService ? 'Edit Panel' : 'Add New Panel'}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <Label htmlFor="name">Service Name</Label>
+                <Label htmlFor="name">Panel Name</Label>
                 <Input
                   id="name"
                   value={formData.name}
@@ -285,7 +288,7 @@ const Services = () => {
                 />
               </div>
               <div>
-                <Label htmlFor="url">Service URL</Label>
+                <Label htmlFor="url">Panel URL</Label>
                 <Input
                   id="url"
                   type="url"
@@ -318,6 +321,19 @@ const Services = () => {
                 </Select>
               </div>
 
+
+              {/* URL Bar Section */}
+              <div className="flex items-center justify-between py-3 border border-gray-200 dark:border-gray-700 rounded-lg px-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Show address bar</span>
+                  <p className="text-xs text-gray-500 mt-0.5">Display the URL bar when this panel is launched</p>
+                </div>
+                <Switch
+                  id="show-url-bar"
+                  checked={formData.show_url_bar}
+                  onCheckedChange={(val) => setFormData({ ...formData, show_url_bar: val })}
+                />
+              </div>
 
               {/* Credential Section */}
               <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
@@ -408,13 +424,13 @@ const Services = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <GlassCard>
           <div className="p-6">
-            <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Total Services</p>
+            <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Total Panels</p>
             <h3 className="text-3xl font-bold text-gray-900 dark:text-white">{services.length}</h3>
           </div>
         </GlassCard>
         <GlassCard>
           <div className="p-6">
-            <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Active Services</p>
+            <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Active Panels</p>
             <h3 className="text-3xl font-bold text-green-600">{activeServices}</h3>
           </div>
         </GlassCard>
@@ -428,11 +444,11 @@ const Services = () => {
 
       <DataTable columns={columns} data={services} />
 
-      {/* Sub-services Dialog */}
+      {/* Sub panels Dialog */}
       <Dialog open={subServicesDialogOpen} onOpenChange={(open) => { setSubServicesDialogOpen(open); if (!open) setSubServicesFor(null); }}>
         <DialogContent className="backdrop-blur-xl bg-white/90 dark:bg-gray-900/90 border-gray-200 dark:border-gray-800 max-w-lg">
           <DialogHeader>
-            <DialogTitle>Sub-services{subServicesFor ? `: ${subServicesFor.name}` : ''}</DialogTitle>
+            <DialogTitle>Sub panels{subServicesFor ? `: ${subServicesFor.name}` : ''}</DialogTitle>
           </DialogHeader>
           {subServicesLoading ? (
             <p className="text-sm text-gray-500">Loading...</p>
@@ -440,7 +456,7 @@ const Services = () => {
             <div className="space-y-4">
               <div className="flex justify-end">
                 <Button size="sm" onClick={() => { setEditingSubService(null); setSubServiceForm({ name: '', username: '', password: '', visibility: 'hidden' }); setSubServiceFormOpen(true); }}>
-                  <Plus className="w-4 h-4 mr-1" /> Add Sub-service
+                  <Plus className="w-4 h-4 mr-1" /> Add Sub panel
                 </Button>
               </div>
               {subServiceFormOpen && (
@@ -476,7 +492,7 @@ const Services = () => {
                   </li>
                 ))}
               </ul>
-              {subServicesList.length === 0 && !subServiceFormOpen && <p className="text-sm text-gray-500">No sub-services. Add one to assign to users.</p>}
+              {subServicesList.length === 0 && !subServiceFormOpen && <p className="text-sm text-gray-500">No sub panels. Add one to assign to users.</p>}
             </div>
           )}
         </DialogContent>
@@ -487,7 +503,7 @@ const Services = () => {
         open={deleteConfirmOpen}
         onOpenChange={setDeleteConfirmOpen}
         onConfirm={confirmDelete}
-        title="Delete Service?"
+        title="Delete Panel?"
         description={`Are you sure you want to delete "${serviceToDelete?.name}"? This action cannot be undone.`}
         confirmText="Delete"
         cancelText="Cancel"
