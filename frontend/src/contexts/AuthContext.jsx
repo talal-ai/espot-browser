@@ -40,22 +40,16 @@ export const AuthProvider = ({ children }) => {
             provider: supabaseUser.app_metadata?.provider || 'email',
           };
 
-          // Only try to fetch from backend if NOT an OAuth provider (Google, etc.)
-          // OAuth users are managed by Supabase, not our backend
-          const isOAuthUser = ['google', 'github', 'discord'].includes(enrichedUser.provider);
-
-          if (!isOAuthUser) {
-            // For email/password users, try to get additional data from backend
-            try {
-              const me = await authService.getCurrentUser();
-              if (me && me.id) {
-                enrichedUser = { ...enrichedUser, ...me };
-              }
-            } catch (err) {
-              console.log('[AuthContext] Backend /auth/me failed, using Supabase data only:', err.message);
+          // Fetch from backend so both OAuth (Google) and email/password users get the same
+          // user shape (id, role, browser_shell_enabled from public.users). Backend accepts
+          // Supabase JWT for OAuth and looks up by auth_user_id.
+          try {
+            const me = await authService.getBackendCurrentUser();
+            if (me && me.id) {
+              enrichedUser = { ...enrichedUser, ...me };
             }
-          } else {
-            console.log('[AuthContext] OAuth user detected, using Supabase data only (provider:', enrichedUser.provider + ')');
+          } catch (err) {
+            console.log('[AuthContext] Backend /auth/me failed, using Supabase data only:', err.message);
           }
 
           setUser(enrichedUser);
@@ -74,6 +68,19 @@ export const AuthProvider = ({ children }) => {
       authListener.subscription.unsubscribe();
     };
   }, []);
+
+  // Refetch current user when window gains focus (so admin-updated fields like browser_shell_enabled apply without full refresh)
+  useEffect(() => {
+    const onFocus = async () => {
+      if (!user?.id || !localStorage.getItem("auth_token")) return;
+      try {
+        const me = await authService.getBackendCurrentUser();
+        if (me && me.id) setUser((prev) => (prev ? { ...prev, ...me } : prev));
+      } catch { /* ignore */ }
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [user?.id]);
 
   // Forced logout via global events and realtime session termination
   useEffect(() => {
@@ -136,6 +143,8 @@ export const AuthProvider = ({ children }) => {
         throw error;
       }
 
+      // Only OAuth (e.g. Google) users have a Supabase session. Admin-created users log in
+      // via backend only (login form → POST /auth/login) and never hit this branch.
       if (data.session) {
         localStorage.setItem("auth_token", data.session.access_token);
         
@@ -149,18 +158,15 @@ export const AuthProvider = ({ children }) => {
           provider: supabaseUser.app_metadata?.provider || 'email',
         };
 
-        // Only try to fetch from backend if NOT an OAuth provider
-        const isOAuthUser = ['google', 'github', 'discord'].includes(enrichedUser.provider);
-        
-        if (!isOAuthUser) {
-          try {
-            const me = await authService.getCurrentUser();
-            if (me && me.id) {
-              enrichedUser = { ...enrichedUser, ...me };
-            }
-          } catch (err) {
-            console.log('[AuthContext] Backend /auth/me failed, using Supabase data only:', err.message);
+        // Fetch from backend so both OAuth (Google) and email/password users get the same
+        // user shape (id, role, browser_shell_enabled from public.users).
+        try {
+          const me = await authService.getBackendCurrentUser();
+          if (me && me.id) {
+            enrichedUser = { ...enrichedUser, ...me };
           }
+        } catch (err) {
+          console.log('[AuthContext] Backend /auth/me failed, using Supabase data only:', err.message);
         }
 
         setUser(enrichedUser);
@@ -168,12 +174,11 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
-      // No Supabase session - check for backend JWT token (username/password auth)
+      // No Supabase session: admin-created and email/password users use backend JWT only.
+      // Restore session from persisted token (stay logged in after close/reopen).
       const backendToken = localStorage.getItem("auth_token");
       if (backendToken) {
-        console.log("[AuthContext] No Supabase session, but found backend token - verifying...");
         try {
-          // Validate backend token via /auth/verify endpoint
           const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/verify`, {
             method: 'GET',
             headers: {
@@ -185,24 +190,25 @@ export const AuthProvider = ({ children }) => {
           if (response.ok) {
             const data = await response.json();
             if (data.valid && data.user) {
-              console.log("[AuthContext] Backend token valid, user authenticated");
               setUser(data.user);
               setIsAuthenticated(true);
               return;
             }
           }
-          
-          // Token invalid, clean up
-          console.log("[AuthContext] Backend token validation failed");
-          localStorage.removeItem("auth_token");
+          // Only clear token when server says unauthorized (expired/invalid). Keep token on network errors so user can retry.
+          if (response.status === 401 || response.status === 403) {
+            localStorage.removeItem("auth_token");
+          }
         } catch (err) {
-          console.error("[AuthContext] Backend token verification error:", err);
-          localStorage.removeItem("auth_token");
+          // Network or other error: keep token so session can be restored when backend is reachable again
+          console.warn("[AuthContext] Could not verify session (backend unreachable?), keeping token for retry:", err?.message || err);
         }
+        // Do not fall through to clear token when we kept it for retry
+        setLoading(false);
+        return;
       }
 
-      // No session found
-      console.log("[AuthContext] No session found");
+      // No session yet (normal on login page or before first login)
       localStorage.removeItem("auth_token");
       setIsAuthenticated(false);
     } catch (error) {

@@ -14,6 +14,7 @@ export interface User {
   created_at: string;
   updated_at: string;
   last_login?: string | null;
+  browser_shell_enabled?: boolean;
 }
 
 export interface UserCreate {
@@ -32,6 +33,7 @@ export interface UserUpdate {
   name?: string;
   role?: 'admin' | 'user' | 'viewer';
   status?: 'active' | 'inactive' | 'suspended';
+  browser_shell_enabled?: boolean;
 }
 
 // Proxy Types

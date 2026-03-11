@@ -726,7 +726,7 @@ class SupabaseService:
 
     # Device Limit Helper Methods
     async def count_user_active_sessions(self, user_id: str) -> int:
-        """Count active sessions for a user (for device limit enforcement)"""
+        """Count active sessions for a user (raw session count, e.g. for display)"""
         try:
             response = self.admin_client.table("user_sessions")\
                 .select("id", count="exact")\
@@ -738,11 +738,72 @@ class SupabaseService:
             logger.error(f"Error counting active sessions for user {user_id}: {e}")
             return 0
 
+    async def count_user_active_devices(self, user_id: str) -> int:
+        """Count distinct active devices for a user (for device limit enforcement).
+        Device key = device_id if present and non-empty, else ip_address, else session id."""
+        try:
+            response = self.admin_client.table("user_sessions")\
+                .select("id, device_id, ip_address")\
+                .eq("user_id", user_id)\
+                .eq("is_active", True)\
+                .execute()
+            rows = response.data or []
+            keys = set()
+            for row in rows:
+                did = row.get("device_id") if isinstance(row.get("device_id"), str) else None
+                if did and did.strip():
+                    keys.add(("device_id", did))
+                else:
+                    ip = row.get("ip_address")
+                    if ip is not None and str(ip).strip():
+                        keys.add(("ip", str(ip)))
+                    else:
+                        keys.add(("id", str(row.get("id", ""))))
+            return len(keys)
+        except Exception as e:
+            logger.error(f"Error counting active devices for user {user_id}: {e}")
+            return 0
+
+    async def user_has_active_session_for_device(self, user_id: str, device_id: Optional[str]) -> bool:
+        """Return True if user has at least one active session with the given device_id."""
+        if not device_id or not str(device_id).strip():
+            return False
+        try:
+            response = self.admin_client.table("user_sessions")\
+                .select("id", count="exact")\
+                .eq("user_id", user_id)\
+                .eq("is_active", True)\
+                .eq("device_id", device_id)\
+                .limit(1)\
+                .execute()
+            return (response.count or 0) > 0
+        except Exception as e:
+            logger.error(f"Error checking session for device {device_id}: {e}")
+            return False
+
+    async def deactivate_sessions_for_user_device(self, user_id: str, device_id: Optional[str]) -> None:
+        """Deactivate all active sessions for this user and device_id (reclaim slot for same-device re-login)."""
+        if not device_id or not str(device_id).strip():
+            return
+        try:
+            self.admin_client.table("user_sessions")\
+                .update({
+                    "is_active": False,
+                    "ended_at": datetime.utcnow().isoformat()
+                })\
+                .eq("user_id", user_id)\
+                .eq("device_id", device_id)\
+                .eq("is_active", True)\
+                .execute()
+        except Exception as e:
+            logger.error(f"Error deactivating sessions for user {user_id} device {device_id}: {e}")
+            raise
+
     async def get_user_active_sessions(self, user_id: str) -> List[dict]:
         """Get all active sessions for a user with device details"""
         try:
             response = self.admin_client.table("user_sessions")\
-                .select("id, ip_address, user_agent, started_at, is_active")\
+                .select("id, ip_address, user_agent, started_at, is_active, device_id, device_info")\
                 .eq("user_id", user_id)\
                 .eq("is_active", True)\
                 .order("started_at", desc=True)\

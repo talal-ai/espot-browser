@@ -40,6 +40,7 @@ class UserResponse(BaseModel):
     email: str
     username: str
     role: str
+    browser_shell_enabled: Optional[bool] = False
 
 from passlib.context import CryptContext
 
@@ -131,7 +132,7 @@ async def verify_token(request: Request, credentials: HTTPAuthorizationCredentia
         if is_supabase_oauth and auth_user_id:
             try:
                 # OAuth users are linked via auth_user_id column
-                resp = supabase_service.client.table("users").select("id,role,email,username,provider").eq("auth_user_id", auth_user_id).limit(1).execute()
+                resp = supabase_service.client.table("users").select("id,role,email,username,provider,browser_shell_enabled").eq("auth_user_id", auth_user_id).limit(1).execute()
                 if resp.data and len(resp.data) > 0:
                     dbu = resp.data[0]
                     # Update user_dict with database info
@@ -142,6 +143,7 @@ async def verify_token(request: Request, credentials: HTTPAuthorizationCredentia
                         "email": dbu.get("email"),
                         "username": dbu.get("username"),
                         "provider": dbu.get("provider"),
+                        "browser_shell_enabled": dbu.get("browser_shell_enabled") if dbu.get("browser_shell_enabled") is not None else False,
                     }
                     logger.debug(f"OAuth user found in database: {user_dict['email']}")
                 else:
@@ -159,17 +161,22 @@ async def verify_token(request: Request, credentials: HTTPAuthorizationCredentia
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Failed to validate user account"
                 )
-        elif not user_dict.get("role") and user_dict.get("id"):
-            # For local tokens, try to fetch additional data by public.users.id
+        elif not is_supabase_oauth and user_dict.get("id"):
+            # For local (email/password) tokens, always fetch from DB so we get latest browser_shell_enabled and other admin-updated fields
             try:
-                resp = supabase_service.client.table("users").select("id,role,email,username").eq("id", user_dict["id"]).limit(1).execute()
+                resp = supabase_service.client.table("users").select("id,role,email,username,browser_shell_enabled").eq("id", user_dict["id"]).limit(1).execute()
                 if resp.data:
                     dbu = resp.data[0]
-                    user_dict.update({"role": dbu.get("role"), "email": dbu.get("email"), "username": dbu.get("username")})
+                    user_dict.update({
+                        "role": dbu.get("role"), "email": dbu.get("email"), "username": dbu.get("username"),
+                        "browser_shell_enabled": dbu.get("browser_shell_enabled") if dbu.get("browser_shell_enabled") is not None else False,
+                    })
             except Exception:
                 pass
         
         user_dict["role"] = user_dict.get("role") or "user"
+        if user_dict.get("browser_shell_enabled") is None:
+            user_dict["browser_shell_enabled"] = False
         return user_dict
     except HTTPException:
         raise
@@ -220,13 +227,23 @@ async def login(request: LoginRequest, http_request: Request):
         user_role = user.get("role", "user")
         if user_role != "admin":
             max_devices = user.get("max_devices", 1) or 1  # Default to 1 if NULL
-            active_session_count = await supabase_service.count_user_active_sessions(user["id"])
-            
-            if active_session_count >= max_devices:
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Device limit exceeded. You can only be logged in on {max_devices} device(s). Please log out from another device."
-                )
+            active_device_count = await supabase_service.count_user_active_devices(user["id"])
+            if active_device_count >= max_devices:
+                # Same-device re-login: reclaim slot by deactivating existing sessions for this device_id
+                if request.device_id and str(request.device_id).strip():
+                    has_same_device = await supabase_service.user_has_active_session_for_device(user["id"], request.device_id)
+                    if has_same_device:
+                        await supabase_service.deactivate_sessions_for_user_device(user["id"], request.device_id)
+                    else:
+                        raise HTTPException(
+                            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                            detail=f"Device limit exceeded. You can only be logged in on {max_devices} device(s). Please log out from another device."
+                        )
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        detail=f"Device limit exceeded. You can only be logged in on {max_devices} device(s). Please log out from another device."
+                    )
         
         token = create_access_token(
             subject=user["id"],

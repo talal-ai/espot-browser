@@ -356,7 +356,7 @@ const UserDashboard = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            Welcome back, <span className="bg-gradient-to-r from-blue-600 to-orange-600 bg-clip-text text-transparent">{userDetails?.name || user?.name || user?.username || 'User'}</span>
+            Welcome back, <span className="text-gray-900 dark:text-white">{userDetails?.name || user?.name || user?.username || 'User'}</span>
           </h1>
           <p className="text-gray-600 dark:text-gray-400">Here's an overview of your account and activity</p>
         </div>
@@ -388,7 +388,7 @@ const UserDashboard = () => {
           change="+2 this week"
           changeType="neutral"
           icon={AppWindow}
-          gradient="bg-gradient-to-br from-blue-500 to-blue-600"
+          gradient="bg-slate-600 dark:bg-slate-500"
         />
         <StatCard
           title="Active Services"
@@ -396,7 +396,7 @@ const UserDashboard = () => {
           change="Ready to use"
           changeType="positive"
           icon={Activity}
-          gradient="bg-gradient-to-br from-green-500 to-green-600"
+          gradient="bg-green-600 dark:bg-green-500"
         />
         <StatCard
           title="Fingerprint Profiles"
@@ -404,7 +404,7 @@ const UserDashboard = () => {
           change={activeProfile ? 'Active profile set' : 'No active profile'}
           changeType={activeProfile ? 'positive' : 'neutral'}
           icon={Fingerprint}
-          gradient="bg-gradient-to-br from-blue-500 to-orange-500"
+          gradient="bg-slate-600 dark:bg-slate-500"
         />
         <StatCard
           title="Account Status"
@@ -412,7 +412,7 @@ const UserDashboard = () => {
           change="Verified"
           changeType="positive"
           icon={Shield}
-          gradient="bg-gradient-to-br from-orange-500 to-orange-600"
+          gradient="bg-slate-600 dark:bg-slate-500"
         />
       </div>
 
@@ -482,7 +482,7 @@ const UserDashboard = () => {
       <GlassCard>
         <div className="p-6">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-orange-600 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-full bg-slate-600 dark:bg-slate-500 flex items-center justify-center">
               <UserIcon className="w-6 h-6 text-white" />
             </div>
             <div>
@@ -535,7 +535,7 @@ const UserDashboard = () => {
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-orange-500 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-lg bg-slate-600 dark:bg-slate-500 flex items-center justify-center">
                 <Fingerprint className="w-5 h-5 text-white" />
               </div>
               <div>
@@ -544,7 +544,7 @@ const UserDashboard = () => {
               </div>
             </div>
             {activeProfile && (
-              <Badge className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700">
+              <Badge className="bg-blue-600 text-white border-0">
                 Active: Profile {(fingerprintProfiles.findIndex(p => p.fingerprint_profile_id === activeProfileId) + 1) || '?'}
               </Badge>
             )}
@@ -560,13 +560,13 @@ const UserDashboard = () => {
                 <div
                   key={item.id}
                   className={`relative p-5 rounded-xl border-2 transition-all duration-300 ${isActive
-                    ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-orange-50 dark:from-blue-900/30 dark:to-orange-900/30 shadow-lg shadow-blue-500/20'
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md'
                     : 'border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-md'
                     }`}
                 >
                   {isActive && (
                     <div className="absolute -top-2 -right-2">
-                      <Badge className="bg-gradient-to-r from-blue-500 to-orange-600 shadow-lg">
+                      <Badge className="bg-blue-600 text-white border-0">
                         <div className="w-2 h-2 rounded-full bg-white mr-1.5 animate-pulse"></div>
                         Active
                       </Badge>
@@ -575,7 +575,7 @@ const UserDashboard = () => {
 
                   <div className="flex items-start gap-3 mb-4">
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isActive
-                      ? 'bg-gradient-to-br from-blue-500 to-orange-600'
+                      ? 'bg-blue-600 dark:bg-blue-500'
                       : 'bg-gray-200 dark:bg-gray-700'
                       }`}>
                       {profile.platform === 'Windows' ? (
@@ -598,7 +598,7 @@ const UserDashboard = () => {
                         size="sm"
                         onClick={() => handleActivateProfile(item.fingerprint_profile_id)}
                         disabled={activating}
-                        className="bg-gradient-to-r from-blue-500 to-orange-600 hover:from-blue-600 hover:to-orange-700 shadow-md w-full mt-2"
+                        className="bg-blue-600 hover:bg-blue-700 text-white w-full mt-2"
                       >
                         {activating ? "Activating..." : "Activate"}
                       </Button>
@@ -624,8 +624,8 @@ const UserDashboard = () => {
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-                <AppWindow className="w-5 h-5 text-white" />
+<div className="w-10 h-10 rounded-lg bg-slate-600 dark:bg-slate-500 flex items-center justify-center">
+              <AppWindow className="w-5 h-5 text-white" />
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">My Services</h3>
@@ -642,14 +642,14 @@ const UserDashboard = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {userServices.slice(0, 6).map((s) => {
-              const ServiceIcon = getServiceIcon(s.name, s.category);
+              const initial = (s.name || 'S').charAt(0).toUpperCase();
 
               return (
                 <GlassCard key={s.id} hover>
                   <div className="p-5">
                     <div className="flex items-start gap-3 mb-4">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-orange-600 flex items-center justify-center flex-shrink-0">
-                        <ServiceIcon className="w-6 h-6 text-white" />
+                      <div className="w-12 h-12 rounded-xl bg-slate-600 dark:bg-slate-500 flex items-center justify-center flex-shrink-0">
+                        <span className="text-xl font-semibold text-white select-none">{initial}</span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-gray-900 dark:text-white">
@@ -704,7 +704,7 @@ const UserDashboard = () => {
                     <Button
                       onClick={() => handleLaunch(s)}
                       disabled={launching === s.id}
-                      className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-md gap-2"
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2"
                     >
                       {launching === s.id ? (
                         <>

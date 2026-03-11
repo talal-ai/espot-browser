@@ -15,7 +15,11 @@ const BrowserShell = ({ children }) => {
 
     const activeTab = tabs.find(t => t.id === activeTabId);
 
+    // Admins always allowed; others only when browser_shell_enabled is explicitly true (default is false)
+    const allowNewTab = user?.role === 'admin' || user?.browser_shell_enabled === true;
+
     const handleNewTab = () => {
+        if (!allowNewTab) return;
         openTab({
             url: 'https://www.google.com',
             title: 'New Tab',
@@ -82,6 +86,7 @@ const BrowserShell = ({ children }) => {
                     onTabClick={handleTabClick}
                     onTabClose={handleCloseTab}
                     onNewTab={handleNewTab}
+                    allowNewTab={allowNewTab}
                 />
             </div>
 

@@ -48,11 +48,12 @@ class FingerprintType(str, Enum):
 class UserBase(BaseModel):
     """Base user model"""
     username: str = Field(..., min_length=3, max_length=50)
-    email: str = Field(..., pattern=r'^[^@]+@[^@]+\.[^@]+$')
+    email: str = Field(..., min_length=1, max_length=255)  # No strict pattern - allow dots and common formats
     name: Optional[str] = Field(None, max_length=255)
     role: UserRole = UserRole.USER
     status: UserStatus = UserStatus.ACTIVE
     max_devices: Optional[int] = Field(default=1, ge=1, description="Maximum concurrent devices/sessions allowed")
+    browser_shell_enabled: bool = False
 
 class UserCreate(UserBase):
     """User creation model"""
@@ -61,11 +62,12 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     """User update model"""
     username: Optional[str] = Field(None, min_length=3, max_length=50)
-    email: Optional[str] = Field(None, pattern=r'^[^@]+@[^@]+\.[^@]+$')
+    email: Optional[str] = Field(None, min_length=1, max_length=255)  # No strict pattern - allow dots and common formats
     name: Optional[str] = Field(None, max_length=255)
     role: Optional[UserRole] = None
     status: Optional[UserStatus] = None
     max_devices: Optional[int] = Field(None, ge=1, description="Maximum concurrent devices/sessions allowed")
+    browser_shell_enabled: Optional[bool] = None
 
 class User(UserBase):
     """User model"""
