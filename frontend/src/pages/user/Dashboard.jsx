@@ -41,6 +41,7 @@ const UserDashboard = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
+  const loadedForUserIdRef = React.useRef(null); // avoid full loading when effect re-runs (e.g. after window focus refreshes user)
   const [userServices, setUserServices] = useState([]);
   const [userDetails, setUserDetails] = useState(null);
   const [fingerprintProfiles, setFingerprintProfiles] = useState([]);
@@ -67,121 +68,117 @@ const UserDashboard = () => {
 
   useEffect(() => {
     const loadData = async () => {
+      if (!user?.id) {
+        setLoading(false);
+        loadedForUserIdRef.current = null;
+        return;
+      }
+      const isInitialLoad = loadedForUserIdRef.current !== user.id;
+      if (isInitialLoad) loadedForUserIdRef.current = user.id;
       try {
-        setLoading(true);
-        if (user?.id) {
-          const res = await servicesService.getMyServices();
-          if (res.success) setUserServices(filterLaunchableServices(res.data));
+        if (isInitialLoad) setLoading(true);
+        // Load core data first so the dashboard can show quickly; then load the rest in parallel
+        const [res, ures] = await Promise.all([
+          servicesService.getMyServices(),
+          usersService.getUser(user.id),
+        ]);
+        if (res.success) setUserServices(filterLaunchableServices(res.data));
+        if (ures.success) setUserDetails(ures.data);
+        // Show dashboard as soon as services + user details are ready (main content)
+        if (isInitialLoad) setLoading(false);
 
-          const ures = await usersService.getUser(user.id);
-          if (ures.success) setUserDetails(ures.data);
-
-          // Load fingerprint profiles (use user endpoint, not admin)
-          console.log('[DEBUG] Calling getMyProfiles for user:', user.id);
-          const fpRes = await fingerprintsService.getMyProfiles();
-          console.log('[DEBUG] getMyProfiles response:', fpRes);
-          if (fpRes.success) {
-            const profiles = fpRes.data || [];
-            console.log('[DEBUG] Profiles received:', profiles.length, profiles);
-            setFingerprintProfiles(profiles);
-            // Check for default and AUTO-ACTIVATE in Electron
-            const def = profiles.find(p => p.is_default);
-            if (def && def.profile) {
-              setActiveProfileId(def.fingerprint_profile_id);
-              setActiveProfile(def.profile);
-
-              // 🔥 AUTO-ACTIVATE default profile in Electron on app load
-              // Only attempt if running in Electron with proper IPC support
-              // AND we haven't already activated in this session (prevents duplicate calls)
-              if (window.electron?.fingerprint?.setActive && !hasActivatedProfileInSession) {
-                hasActivatedProfileInSession = true; // Prevent duplicate calls
-                try {
-                  const electronProfile = {
-                    id: def.profile.id,
-                    name: def.profile.name,
-                    user_agent: def.profile.user_agent,
-                    platform: def.profile.platform || 'Win32',
-                    hardware_concurrency: def.profile.hardware_concurrency || 8,
-                    device_memory: def.profile.device_memory || 8,
-                    screen_width: def.profile.screen_width || 1920,
-                    screen_height: def.profile.screen_height || 1080,
-                    color_depth: def.profile.color_depth || 24,
-                    pixel_ratio: def.profile.pixel_ratio || 1,
-                    timezone: def.profile.timezone || 'America/New_York',
-                    language: def.profile.language || 'en-US',
-                    locale: def.profile.locale || 'en-US',
-                    webgl_vendor: def.profile.webgl_vendor || 'Google Inc. (NVIDIA)',
-                    webgl_renderer: def.profile.webgl_renderer || 'ANGLE (NVIDIA, GeForce GTX 1080)',
-                    webgl_params: def.profile.webgl_params || {},
-                    audio_context: def.profile.audio_context_params || {},
-                    seed: def.profile.seed || Math.floor(Math.random() * 1000000),
-                    max_touch_points: def.profile.max_touch_points || 0,
-                  };
-                  await window.electron.fingerprint.setActive(electronProfile, user.id);
-                  console.log('[ESPOT] ✅ Auto-activated default profile:', electronProfile.name);
-                } catch (e) {
-                  // Silently fail - user can manually activate profile
-                  console.warn('[ESPOT] Auto-activate skipped (IPC not ready or browser mode):', e.message);
-                }
-              }
-            }
-          } else {
-            console.error('[DEBUG] Failed to load fingerprint profiles:', fpRes.error, fpRes);
-          }
-          
-          // Load user proxies
-          console.log('[DEBUG] Loading user proxies for user:', user.id);
-          const proxyRes = await proxiesService.getUserProxies(user.id);
-          console.log('[DEBUG] getUserProxies response:', proxyRes);
-          if (proxyRes.success) {
-            const proxies = proxyRes.data || [];
-            console.log('[DEBUG] Proxies received:', proxies.length, proxies);
-            setUserProxies(proxies);
-            
-            // Find default proxy (or first available) and auto-activate
-            const defaultProxy = proxies.find(p => p.is_default) || (proxies.length > 0 ? proxies[0] : null);
-            if (defaultProxy) {
-              setActiveProxy(defaultProxy);
-              console.log('🔥 Auto-activating proxy for user:', user.id, defaultProxy);
-              
-              // Activate proxy in Electron using per-user session (mirrors admin behavior)
-              // This routes ALL browser traffic for this user through their assigned proxy
-              if (window.electronAPI?.proxy?.activateForUser) {
-                try {
-                  const proxyConfig = {
-                    protocol: defaultProxy.protocol || 'http',
-                    host: defaultProxy.host,
-                    port: defaultProxy.port,
-                    username: defaultProxy.username || '',
-                    password: defaultProxy.password || ''
-                  };
-                  
-                  const result = await window.electronAPI.proxy.activateForUser(user.id, proxyConfig);
-                  
-                  if (result.success) {
-                    console.log('✅ User proxy activated in Electron:', result);
-                    toast({
-                      title: '🛡️ Proxy Protection Active',
-                      description: `Your traffic is now routed through ${defaultProxy.country || 'Secure Location'}`,
-                      duration: 4000
-                    });
-                  } else {
-                    console.error('❌ Failed to activate user proxy:', result.error);
+        // Load fingerprints and proxies in background (non-blocking for UI)
+        const loadFingerprints = async () => {
+          try {
+            const fpRes = await fingerprintsService.getMyProfiles();
+            if (fpRes.success) {
+              const profiles = fpRes.data || [];
+              setFingerprintProfiles(profiles);
+              const def = profiles.find(p => p.is_default);
+              if (def && def.profile) {
+                setActiveProfileId(def.fingerprint_profile_id);
+                setActiveProfile(def.profile);
+                if (window.electron?.fingerprint?.setActive && !hasActivatedProfileInSession) {
+                  hasActivatedProfileInSession = true;
+                  try {
+                    const electronProfile = {
+                      id: def.profile.id,
+                      name: def.profile.name,
+                      user_agent: def.profile.user_agent,
+                      platform: def.profile.platform || 'Win32',
+                      hardware_concurrency: def.profile.hardware_concurrency || 8,
+                      device_memory: def.profile.device_memory || 8,
+                      screen_width: def.profile.screen_width || 1920,
+                      screen_height: def.profile.screen_height || 1080,
+                      color_depth: def.profile.color_depth || 24,
+                      pixel_ratio: def.profile.pixel_ratio || 1,
+                      timezone: def.profile.timezone || 'America/New_York',
+                      language: def.profile.language || 'en-US',
+                      locale: def.profile.locale || 'en-US',
+                      webgl_vendor: def.profile.webgl_vendor || 'Google Inc. (NVIDIA)',
+                      webgl_renderer: def.profile.webgl_renderer || 'ANGLE (NVIDIA, GeForce GTX 1080)',
+                      webgl_params: def.profile.webgl_params || {},
+                      audio_context: def.profile.audio_context_params || {},
+                      seed: def.profile.seed || Math.floor(Math.random() * 1000000),
+                      max_touch_points: def.profile.max_touch_points || 0,
+                    };
+                    await window.electron.fingerprint.setActive(electronProfile, user.id);
+                    console.log('[ESPOT] ✅ Auto-activated default profile:', electronProfile.name);
+                  } catch (e) {
+                    console.warn('[ESPOT] Auto-activate skipped:', e?.message);
                   }
-                } catch (err) {
-                  console.error('❌ Failed to auto-activate proxy:', err);
                 }
-              } else {
-                console.log('ℹ️ Electron proxy API not available (browser mode)');
               }
             }
+          } catch (e) {
+            console.error('[DEBUG] Failed to load fingerprint profiles:', e);
           }
-        }
-      } catch (e) { console.error(e) }
-      finally { setLoading(false); }
+        };
+        const loadProxies = async () => {
+          try {
+            const proxyRes = await proxiesService.getUserProxies(user.id);
+            if (proxyRes.success) {
+              const proxies = proxyRes.data || [];
+              setUserProxies(proxies);
+              const defaultProxy = proxies.find(p => p.is_default) || (proxies.length > 0 ? proxies[0] : null);
+              if (defaultProxy) {
+                setActiveProxy(defaultProxy);
+                if (window.electronAPI?.proxy?.activateForUser) {
+                  try {
+                    const proxyConfig = {
+                      protocol: defaultProxy.protocol || 'http',
+                      host: defaultProxy.host,
+                      port: defaultProxy.port,
+                      username: defaultProxy.username || '',
+                      password: defaultProxy.password || '',
+                    };
+                    const result = await window.electronAPI.proxy.activateForUser(user.id, proxyConfig);
+                    if (result.success) {
+                      toast({
+                        title: '🛡️ Proxy Protection Active',
+                        description: `Your traffic is now routed through ${defaultProxy.country || 'Secure Location'}`,
+                        duration: 4000,
+                      });
+                    }
+                  } catch (err) {
+                    console.error('❌ Failed to auto-activate proxy:', err);
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.error('[DEBUG] Failed to load user proxies:', e);
+          }
+        };
+        void loadFingerprints();
+        void loadProxies();
+      } catch (e) {
+        console.error(e);
+        setLoading(false);
+      }
     };
     loadData();
-  }, [user]);
+  }, [user?.id]); // only reload when logged-in user id changes, not when user object reference changes (e.g. after focus refresh)
 
   const handleActivateProfile = async (fingerprintProfileId) => {
     if (activating) return;

@@ -10,57 +10,78 @@ import { useUsers } from '../../hooks/use-users';
 import { useSessions } from '../../hooks/use-sessions';
 import { useProxies } from '../../hooks/use-proxies';
 
-// Helper to format action text
+// Cache and stability: avoid full loading again on remount (e.g. after switching apps and coming back) — same pattern as user dashboard
+let adminDashboardShownOnce = false;
+let adminStatsLoadedOnce = false;
+let cachedAdminStats = null;
+let cachedAdminChartsData = null;
+
+// Helper to format action text for display (real admin activity: add/delete/assign users, etc.)
 const formatActivityAction = (action) => {
   if (!action) return 'Unknown Action';
-  const lower = action.toLowerCase();
-  
-  // Specific overrides for known clumsy backend strings
+  const lower = (action || '').toLowerCase();
+  if (lower.includes('user_created')) return 'User Created';
+  if (lower.includes('user_deleted')) return 'User Deleted';
+  if (lower.includes('service_assigned')) return 'Panel Assigned';
+  if (lower.includes('service_unassigned')) return 'Panel Unassigned';
   if (lower.includes('proxy_assigned')) return 'Proxy Assigned';
   if (lower.includes('proxy_unassigned')) return 'Proxy Unassigned';
+  if (lower.includes('session_terminate') || (lower.includes('terminate') && lower.includes('session'))) return 'Session Terminated';
   if (lower.includes('login')) return 'User Logged In';
   if (lower.includes('logout')) return 'User Logged Out';
-  
-  // Generic fallback: Replace underscores with spaces and capitalize
-  return action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  return action.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
 };
 
-// Helper to get icon based on activity type
-const getActivityIcon = (type) => {
-  switch (type) {
-    case 'login': return LogIn;
-    case 'logout': return LogOut;
-    case 'proxy': return Shield;
-    default: return Activity;
-  }
+// Helper to get icon and style based on activity type
+const getActivityMeta = (activity) => {
+  const type = (activity?.type || '').toLowerCase();
+  const action = (activity?.action || '').toLowerCase();
+  if (type === 'login' || action.includes('login')) return { Icon: LogIn, label: 'Login', bg: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' };
+  if (type === 'logout' || action.includes('logout')) return { Icon: LogOut, label: 'Logout', bg: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' };
+  if (type === 'proxy' || action.includes('proxy')) return { Icon: Shield, label: 'Proxy', bg: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' };
+  if (action.includes('session') || action.includes('terminate')) return { Icon: Monitor, label: 'Session', bg: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400' };
+  if (action.includes('user_created')) return { Icon: Users, label: 'User', bg: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' };
+  if (action.includes('user_deleted')) return { Icon: Users, label: 'User', bg: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' };
+  if (action.includes('service_assigned') || action.includes('service_unassigned')) return { Icon: AppWindow, label: 'Panel', bg: 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400' };
+  return { Icon: Activity, label: 'Activity', bg: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' };
 };
 
 const Dashboard = () => {
   const { users, loading: usersLoading } = useUsers();
   const { sessions, loading: sessionsLoading } = useSessions();
   const { proxies, loading: proxiesLoading } = useProxies();
-  const [stats, setStats] = useState(null);
-  const [chartsData, setChartsData] = useState(null);
-  const [statsLoading, setStatsLoading] = useState(true);
+  const [stats, setStats] = useState(() => cachedAdminStats);
+  const [chartsData, setChartsData] = useState(() => cachedAdminChartsData);
+  const [statsLoading, setStatsLoading] = useState(!cachedAdminChartsData);
   const [now, setNow] = useState(new Date());
 
-  const loading = usersLoading || sessionsLoading || proxiesLoading || statsLoading;
+  const loading = statsLoading;
 
-  // Load system stats
+  // Load system stats; use cache on remount so we don't show skeleton or duplicate requests when switching back (same pattern as user dashboard)
   useEffect(() => {
+    const isInitialLoad = !adminStatsLoadedOnce;
+    if (!isInitialLoad && cachedAdminChartsData) {
+      setStats(cachedAdminStats);
+      setChartsData(cachedAdminChartsData);
+      setStatsLoading(false);
+    }
     const loadStats = async () => {
+      if (isInitialLoad) setStatsLoading(true);
       try {
-        setStatsLoading(true);
         const [statsResponse, chartsResponse] = await Promise.all([
           systemService.getStats(),
           systemService.getDashboardCharts()
         ]);
-        
         if (statsResponse.success) {
+          cachedAdminStats = statsResponse.data;
           setStats(statsResponse.data);
         }
         if (chartsResponse.success) {
+          cachedAdminChartsData = chartsResponse.data;
           setChartsData(chartsResponse.data);
+        }
+        if (statsResponse.success || chartsResponse.success) {
+          adminStatsLoadedOnce = true; // only after we have something to cache
         }
       } catch (error) {
         console.error('Failed to load stats:', error);
@@ -77,18 +98,19 @@ const Dashboard = () => {
     return () => clearInterval(id);
   }, []);
 
-  const activeUsers = users.filter(u => u.status === 'active').length;
-  const activeSessions = sessions.filter(s => s.status === 'active').length;
-  const activeProxies = proxies.filter(p => p.status === 'active').length;
+  const activeUsers = (users || []).filter(u => u.status === 'active').length;
+  const activeSessions = (sessions || []).filter(s => s.status === 'active').length;
+  const activeProxies = (proxies || []).filter(p => p.status === 'active').length;
 
-  // Chart data
-  // Chart data
   const userActivityData = chartsData?.user_activity || [];
   const sessionTrendsData = chartsData?.session_trends || [];
   const serviceUsageData = chartsData?.service_usage || [];
   const recentActivity = chartsData?.recent_activity || [];
 
-  if (loading) {
+  if (!loading) adminDashboardShownOnce = true;
+  const showSkeleton = loading && !adminDashboardShownOnce;
+
+  if (showSkeleton) {
     return <PageSkeleton mode="dashboard" />;
   }
 
@@ -99,11 +121,12 @@ const Dashboard = () => {
         systemService.getStats(),
         systemService.getDashboardCharts()
       ]);
-
       if (statsResponse.success) {
+        cachedAdminStats = statsResponse.data;
         setStats(statsResponse.data);
       }
       if (chartsResponse.success) {
+        cachedAdminChartsData = chartsResponse.data;
         setChartsData(chartsResponse.data);
       }
     } catch (error) {
@@ -144,7 +167,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Total Users"
-          value={users.length}
+          value={(users || []).length}
           change="+12%"
           changeType="positive"
           icon={Users}
@@ -187,35 +210,57 @@ const Dashboard = () => {
         <div className="lg:col-span-2">
           <GlassCard>
             <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Recent Activity</h3>
-              <div className="space-y-4">
-                {recentActivity.map((activity, idx) => {
-                  const Icon = getActivityIcon(activity.type);
-                  return (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-4 p-4 rounded-lg bg-gray-50/50 dark:bg-gray-800/50 hover:bg-gray-100/50 dark:hover:bg-gray-700/50 transition-colors border border-transparent hover:border-gray-200 dark:hover:border-gray-700"
-                    >
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        activity.type === 'login' ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' :
-                        activity.type === 'logout' ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' :
-                        activity.type === 'proxy' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' :
-                        'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
-                      }`}>
-                        <Icon className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{activity.user}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{formatActivityAction(activity.action)}</p>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-xs font-medium text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-900 px-2 py-1 rounded border border-gray-200 dark:border-gray-700">
-                          {activity.time}
-                        </span>
-                      </div>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Activity</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    {recentActivity.length > 0
+                      ? `Last ${recentActivity.length} event${recentActivity.length === 1 ? '' : 's'} · Live feed`
+                      : 'Live activity from your users'}
+                  </p>
+                </div>
+              </div>
+              <div className="max-h-[340px] overflow-y-auto pr-1 -mr-1 scrollbar-thin">
+                {recentActivity.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-3">
+                      <Activity className="w-7 h-7 text-gray-400 dark:text-gray-500" />
                     </div>
-                  );
-                })}
+                    <p className="text-sm font-medium text-gray-600 dark:text-gray-300">No recent activity</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-[220px]">Logins, session terminations, and proxy changes will appear here.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {recentActivity.map((activity, idx) => {
+                      const { Icon, bg } = getActivityMeta(activity);
+                      const initial = (activity.user || '?').charAt(0).toUpperCase();
+                      return (
+                        <div
+                          key={idx}
+                          className="flex items-center gap-3 p-3 rounded-xl bg-gray-50/60 dark:bg-gray-800/50 hover:bg-gray-100/80 dark:hover:bg-gray-700/50 transition-colors border border-transparent hover:border-gray-200/80 dark:hover:border-gray-600/50"
+                        >
+                          <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${bg}`}>
+                            <Icon className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0 flex-1 flex items-center gap-3">
+                            <div className="shrink-0 w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xs font-semibold text-gray-700 dark:text-gray-300">
+                              {initial}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{activity.user}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{formatActivityAction(activity.action)}</p>
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 tabular-nums bg-white/80 dark:bg-gray-900/80 px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700">
+                              {activity.time}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </GlassCard>

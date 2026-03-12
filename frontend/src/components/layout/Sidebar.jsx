@@ -39,7 +39,7 @@ const Sidebar = () => {
       }
     };
     loadProxyStatus();
-  }, [user, isAdmin]);
+  }, [user?.id, isAdmin]); // only refetch when user id or role changes, not on every user object reference change
 
   const menuItems = isAdmin
     ? [

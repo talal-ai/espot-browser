@@ -75,7 +75,14 @@ export const AuthProvider = ({ children }) => {
       if (!user?.id || !localStorage.getItem("auth_token")) return;
       try {
         const me = await authService.getBackendCurrentUser();
-        if (me && me.id) setUser((prev) => (prev ? { ...prev, ...me } : prev));
+        if (!me?.id) return;
+        setUser((prev) => {
+          if (!prev) return prev;
+          // Only update if something meaningful changed to avoid triggering child effects (Dashboard, Sidebar) repeatedly
+          const same = prev.id === me.id && prev.role === (me.role ?? prev.role) && prev.browser_shell_enabled === (me.browser_shell_enabled ?? prev.browser_shell_enabled);
+          if (same) return prev;
+          return { ...prev, ...me };
+        });
       } catch { /* ignore */ }
     };
     window.addEventListener("focus", onFocus);

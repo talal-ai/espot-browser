@@ -103,7 +103,8 @@ async def get_service_launch_credentials(
                 "service_name": service.get("name"),
                 "service_url": service.get("url"),
                 "username": "",
-                "password": ""
+                "password": "",
+                "show_url_bar": service.get("show_url_bar", False),
             }
         
         # Decrypt password
@@ -128,7 +129,8 @@ async def get_service_launch_credentials(
             service_name=svc_name,
             service_url=svc_url,
             username=cred_username,
-            password=decrypted_password
+            password=decrypted_password,
+            show_url_bar=service.get("show_url_bar", False),
         )
         
     except HTTPException:

@@ -1222,27 +1222,31 @@ class SupabaseService:
                 for log in (logs_response.data or []):
                     username = "Unknown"
                     if log.get("user") and isinstance(log["user"], dict):
-                         username = log["user"].get("username", "Unknown")
-                    
-                    # Determine type/color from action
-                    action = log.get("action", "").lower()
+                        username = log["user"].get("username") or "Unknown"
+                    else:
+                        # Deleted users or logs without join: use stored old_values/new_values
+                        ov, nv = log.get("old_values") or {}, log.get("new_values") or {}
+                        username = nv.get("username") or ov.get("username") or username
+                    action_str = log.get("action", "") or ""
+                    resource_type = log.get("resource_type", "") or ""
+                    display_action = f"{action_str} {resource_type}".strip() or action_str
+                    action = action_str.lower()
                     act_type = "service"
                     if "login" in action: act_type = "login"
                     elif "logout" in action: act_type = "logout"
                     elif "proxy" in action: act_type = "proxy"
-                    
-                    # Calculate time ago roughly
+                    elif "user_created" in action or "user_deleted" in action: act_type = "user"
+                    elif "service_assigned" in action or "service_unassigned" in action: act_type = "service"
                     try:
-                        created_at = datetime.fromisoformat(log["created_at"].replace('Z', '+00:00'))
-                        time_str = created_at.strftime("%H:%M") 
-                    except:
+                        created_at = datetime.fromisoformat(log["created_at"].replace("Z", "+00:00"))
+                        time_str = created_at.strftime("%H:%M")
+                    except Exception:
                         time_str = "Now"
-
                     recent_activity.append(ActivityItem(
                         user=username,
-                        action=f"{log.get('action', '')} {log.get('resource_type', '')}",
+                        action=display_action,
                         time=time_str,
-                        type=act_type
+                        type=act_type,
                     ))
             except Exception as log_e:
                 logger.error(f"Error processing recent activity: {log_e}")
@@ -1734,7 +1738,7 @@ class SupabaseService:
             return await dev_service.get_user_sub_services(user_id)
         try:
             response = self.client.table("user_sub_services").select(
-                "created_at, expires_at, sub_services(id, name, username, service_id, visibility, services(id, name, url, status))"
+                "created_at, expires_at, sub_services(id, name, username, service_id, visibility, services(id, name, url, status, show_url_bar))"
             ).eq("user_id", user_id).execute()
             results = []
             for row in (response.data or []):
@@ -1744,6 +1748,7 @@ class SupabaseService:
                 svc = sub.pop("services", None) if isinstance(sub, dict) else None
                 url = svc.get("url") if svc else ""
                 status = svc.get("status", "active") if svc else "active"
+                show_url_bar = bool(svc.get("show_url_bar", False)) if svc else False
                 results.append({
                     "id": sub["id"],
                     "name": sub["name"],
@@ -1754,6 +1759,7 @@ class SupabaseService:
                     "assigned_at": row.get("created_at"),
                     "expires_at": row.get("expires_at"),
                     "assignment_source": "direct",
+                    "show_url_bar": show_url_bar,
                 })
             return results
         except Exception as e:

@@ -2225,7 +2225,9 @@ function setupAutoUpdater() {
   autoUpdater.autoDownload = false; // Manual download
   autoUpdater.autoInstallOnAppQuit = true; // Install update when user quits app
   
-  // If a local generic update server is configured for testing, use it
+  // If a custom update server is set (e.g. for testing), use it. Otherwise electron-updater
+  // uses GitHub Releases from package.json build.publish (owner/repo) and expects latest.yml
+  // in the release assets.
   if (process.env.UPDATE_SERVER_URL) {
     try {
       autoUpdater.setFeedURL({ provider: 'generic', url: process.env.UPDATE_SERVER_URL });
