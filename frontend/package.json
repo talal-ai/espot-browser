@@ -1,7 +1,7 @@
 {
   "name": "espot-browser-desktop",
   "productName": "Espot Browser Desktop",
-  "version": "1.0.8",
+  "version": "1.0.10",
   "description": "ESPOT Browser Desktop Application",
   "main": "dist-electron/main.js",
   "homepage": "./",
@@ -14,7 +14,7 @@
     "preview": "vite preview",
     "electron": "electron .",
     "dist": "npm run build && electron-builder",
-    "release": "cross-env GH_TOKEN=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 npm run build && electron-builder --publish always",
+    "release": "npm run build && electron-builder --publish always",
     "dist:win": "npm run build && electron-builder --win",
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:linux": "npm run build && electron-builder --linux",
@@ -127,7 +127,7 @@
         "provider": "github",
         "owner": "talal-ai",
         "repo": "espot-browser",
-        "releaseType": "release"
+        "releaseType": "draft"
       }
     ],
     "files": [

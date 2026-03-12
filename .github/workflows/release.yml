@@ -8,6 +8,8 @@ on:
 jobs:
   release-windows:
     runs-on: windows-latest
+    permissions:
+      contents: write  # Required so electron-builder can create/update the release and upload latest.yml + installers
 
     steps:
       - name: Check out Git repository
@@ -17,6 +19,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+
+      - name: Set version from tag (so release tag matches built app version)
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          npm pkg set version=$version
+        working-directory: frontend
 
       - name: Clean install dependencies
         run: |
@@ -29,3 +37,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: npm run release
         working-directory: frontend
+
+      # electron-builder only uploads latest.yml when release is created as draft (known bug).
+      # So we create as draft then publish here so auto-updater can see the release.
+      - name: Publish release (so latest.yml and installers are visible to auto-updater)
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: gh release edit ${{ github.ref_name }} --repo ${{ github.repository }} --draft=false
