@@ -9,7 +9,7 @@ from datetime import datetime
 
 from ..services.supabase_service import supabase_service
 from ..services.encryption_service import encryption_service
-from ..models.database import LaunchCredentials
+from ..models.database import LaunchCredentials, Service
 from .auth_routes import verify_token
 
 logger = logging.getLogger(__name__)
@@ -27,26 +27,9 @@ async def get_my_services(user: dict = Depends(verify_token)):
         
         services = await supabase_service.get_user_services(user_id)
         sub_services = await supabase_service.get_user_sub_services(user_id)
-
-        def is_assignment_active(item: dict) -> bool:
-            expires_at = item.get("expires_at")
-            if not expires_at:
-                return True
-            try:
-                if isinstance(expires_at, str):
-                    expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-                return datetime.now(expires_at.tzinfo) <= expires_at
-            except Exception:
-                # Keep behavior permissive on malformed dates; launch endpoint still enforces access.
-                return True
-
         for s in services:
             s["type"] = "service"
-
-        launchable_services = [s for s in services if is_assignment_active(s)]
-        launchable_sub_services = [s for s in sub_services if is_assignment_active(s)]
-
-        return list(launchable_services) + list(launchable_sub_services)
+        return list(services) + list(sub_services)
     except HTTPException:
         raise
     except Exception as e:
@@ -120,8 +103,7 @@ async def get_service_launch_credentials(
                 "service_name": service.get("name"),
                 "service_url": service.get("url"),
                 "username": "",
-                "password": "",
-                "show_url_bar": bool(service.get("show_url_bar", False)),
+                "password": ""
             }
         
         # Decrypt password
@@ -141,14 +123,12 @@ async def get_service_launch_credentials(
         svc_url = service.get("url") if isinstance(service, dict) else service.url
         cred_username = credential.get("username")
         
-        show_url_bar = bool(service.get("show_url_bar", False)) if isinstance(service, dict) else getattr(service, "show_url_bar", False)
         return LaunchCredentials(
             service_id=service_id,
             service_name=svc_name,
             service_url=svc_url,
             username=cred_username,
-            password=decrypted_password,
-            show_url_bar=show_url_bar,
+            password=decrypted_password
         )
         
     except HTTPException:
