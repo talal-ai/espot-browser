@@ -45,6 +45,19 @@ async def get_current_admin():
 async def create_user(user_data: UserCreate, admin=Depends(get_current_admin)):
     """Create a new user (admin-created user with password)"""
     try:
+        # Explicitly check for duplicate email/username
+        existing = supabase_service.client.table("users").select("email,username").or_(
+            f"email.eq.{user_data.email},username.eq.{user_data.username}"
+        ).execute()
+        
+        if existing.data:
+            for u in existing.data:
+                if u.get("email") == user_data.email:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this email already exists")
+                if u.get("username") == user_data.username:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this username already exists")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this email or username already exists")
+
         password_hash = hash_password(user_data.password)
         user = await supabase_service.create_user_with_password(user_data, password_hash)
         logger.info(f"User created by admin: {user.id}")
@@ -59,6 +72,8 @@ async def create_user(user_data: UserCreate, admin=Depends(get_current_admin)):
         except Exception:
             pass
         return user
+    except HTTPException:
+        raise
     except Exception as e:
         msg = str(e)
         if "duplicate" in msg.lower() or "unique" in msg.lower():
@@ -652,7 +667,10 @@ async def update_user(user_id: str, user_data: UserUpdate, admin=Depends(get_cur
         raise
     except Exception as e:
         logger.error(f"Error updating user {user_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update user")
+        msg = str(e)
+        if "duplicate" in msg.lower() or "unique" in msg.lower():
+            raise HTTPException(status_code=409, detail="User already exists (duplicate email or username)")
+        raise HTTPException(status_code=500, detail=f"Failed to update user: {msg}")
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(user_id: str, admin=Depends(get_current_admin)):

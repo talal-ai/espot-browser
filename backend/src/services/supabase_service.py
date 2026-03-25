@@ -197,6 +197,12 @@ class SupabaseService:
         """Update user"""
         try:
             update_data = user_data.dict(exclude_unset=True)
+            
+            if "password" in update_data:
+                from passlib.context import CryptContext
+                pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+                update_data["password_hash"] = pwd_context.hash(update_data.pop("password"))
+                
             update_data["updated_at"] = datetime.utcnow().isoformat()
             
             response = self.admin_client.table("users").update(update_data).eq("id", user_id).execute()

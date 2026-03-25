@@ -135,6 +135,7 @@ interface UserSession {
 }
 
 const userSessions = new Map<string, UserSession>();
+const activeServiceWindows = new Map<string, BrowserWindow>();
 
 // Create the main window
 function createMainWindow() {
@@ -1153,6 +1154,25 @@ function setupIpcHandlers() {
   // SERVICE LAUNCH WITH AUTOFILL + FINGERPRINT SPOOFING
   // ============================================================================
 
+  ipcMain.handle('service:updateUrlBar', async (_, serviceId: string, showUrlBar: boolean) => {
+    try {
+      const displayStyle = showUrlBar ? 'flex' : 'none';
+      let found = false;
+      for (const [key, window] of activeServiceWindows.entries()) {
+        if (key.endsWith(`-${serviceId}`) && !window.isDestroyed()) {
+          window.webContents.executeJavaScript(`
+            var tb = document.getElementById('toolbar');
+            if(tb) tb.style.display = '${displayStyle}';
+          `).catch(() => {});
+          found = true;
+        }
+      }
+      return { success: true, updated: found };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  });
+
   ipcMain.handle('service:launch', async (_, launchData: {
     serviceId: string;
     url: string;
@@ -1163,6 +1183,15 @@ function setupIpcHandlers() {
   }) => {
     try {
       console.log(`🚀 Launching service: ${launchData.url}`);
+
+      const serviceKey = `${launchData.userId || 'common'}-${launchData.serviceId}`;
+      const existingWindow = activeServiceWindows.get(serviceKey);
+      if (existingWindow && !existingWindow.isDestroyed()) {
+        console.log(`[${launchData.serviceId}] ℹ️ Service already running, refocusing...`);
+        if (existingWindow.isMinimized()) existingWindow.restore();
+        existingWindow.focus();
+        return { success: true, message: 'Focused existing window' };
+      }
 
       // Get active fingerprint profile for spoofing
       let profile: FingerprintProfile | null = activeProfile;
@@ -1219,9 +1248,15 @@ function setupIpcHandlers() {
         const spoofFile = spoofingPreloadPath;
         serviceWindow.on('closed', () => {
           try { require('fs').unlinkSync(spoofFile); } catch (_) { }
+          activeServiceWindows.delete(serviceKey);
+        });
+      } else {
+        serviceWindow.on('closed', () => {
+          activeServiceWindows.delete(serviceKey);
         });
       }
 
+      activeServiceWindows.set(serviceKey, serviceWindow);
       console.log(`[${launchData.serviceId}] ✅ Service shell window created (hidden)`);
 
       // Apply proxy if active (check user-specific proxy first, then global proxy)
@@ -2278,12 +2313,20 @@ function setupAutoUpdater() {
     sendUpdateEvents('updater:status', 'Update ready to install.');
   });
 
-  // Check for updates 10 seconds after app start
-  setTimeout(() => {
+  // Reusable background check function
+  const performUpdateCheck = () => {
+    console.log('[AUTO-UPDATE] Triggering background update check...');
     autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-      console.error('[AUTO-UPDATE] Failed to check for updates:', err);
+      console.error('[AUTO-UPDATE] Failed to check for updates in background:', err);
     });
-  }, 10000);
+  };
+
+  // Initial check 10 seconds after app start
+  setTimeout(performUpdateCheck, 10000);
+
+  // Periodic automatic check every 4 hours (4 * 60 * 60 * 1000 ms = 14,400,000 ms)
+  const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+  setInterval(performUpdateCheck, FOUR_HOURS_MS);
 }
 
 /**

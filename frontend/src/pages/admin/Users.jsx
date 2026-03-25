@@ -50,6 +50,9 @@ const Users = () => {
   const [serviceStatus, setServiceStatus] = useState('all');
   const [serviceSort, setServiceSort] = useState({ key: 'name', order: 'asc' });
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [panelSearch, setPanelSearch] = useState('');
+  const [parentPanelSearch, setParentPanelSearch] = useState('');
+  const [subPanelSearch, setSubPanelSearch] = useState('');
   
   // Proxy state
   const [availableProxies, setAvailableProxies] = useState([]);
@@ -509,7 +512,18 @@ const Users = () => {
                       <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
                         <SelectTrigger><SelectValue placeholder="Select a panel" /></SelectTrigger>
                         <SelectContent>
-                          {unassignedServices.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+                          <div className="p-2 sticky top-0 bg-background z-10 border-b">
+                            <Input 
+                              placeholder="Search panels..." 
+                              value={panelSearch} 
+                              onChange={(e) => setPanelSearch(e.target.value)} 
+                              onKeyDown={(e) => e.stopPropagation()}
+                              autoFocus
+                            />
+                          </div>
+                          {unassignedServices
+                            .filter(s => s.name?.toLowerCase().includes(panelSearch.toLowerCase()))
+                            .map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
                         </SelectContent>
                       </Select>
                       <Select value={assignmentDuration} onValueChange={setAssignmentDuration}>
@@ -556,14 +570,37 @@ const Users = () => {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                       <Select value={selectedParentServiceForSub} onValueChange={setSelectedParentServiceForSub}>
                         <SelectTrigger><SelectValue placeholder="Parent service" /></SelectTrigger>
-                        <SelectContent>
-                          {availableServices.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+                        <SelectContent className="max-h-80">
+                          <div className="p-2 sticky top-0 bg-background z-10 border-b">
+                            <Input 
+                              placeholder="Search parent panels..." 
+                              value={parentPanelSearch} 
+                              onChange={(e) => setParentPanelSearch(e.target.value)} 
+                              onKeyDown={(e) => e.stopPropagation()}
+                              autoFocus
+                            />
+                          </div>
+                          {availableServices
+                            .filter(s => s.name?.toLowerCase().includes(parentPanelSearch.toLowerCase()))
+                            .map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
                         </SelectContent>
                       </Select>
                       <Select value={selectedSubServiceId} onValueChange={setSelectedSubServiceId} disabled={!selectedParentServiceForSub}>
                         <SelectTrigger><SelectValue placeholder="Sub panel" /></SelectTrigger>
                         <SelectContent>
-                          {(subServicesOfParent || []).filter((sub) => !(assignedSubServices || []).some((a) => a.id === sub.id)).map((sub) => (
+                          <div className="p-2 sticky top-0 bg-background z-10 border-b">
+                            <Input 
+                              placeholder="Search sub panels..." 
+                              value={subPanelSearch} 
+                              onChange={(e) => setSubPanelSearch(e.target.value)} 
+                              onKeyDown={(e) => e.stopPropagation()}
+                              autoFocus
+                            />
+                          </div>
+                          {(subServicesOfParent || [])
+                            .filter((sub) => !(assignedSubServices || []).some((a) => a.id === sub.id))
+                            .filter(sub => sub.name?.toLowerCase().includes(subPanelSearch.toLowerCase()))
+                            .map((sub) => (
                             <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
                           ))}
                         </SelectContent>
@@ -700,6 +737,7 @@ const Users = () => {
                           unassignedProxies.map((p) => (
                             <SelectItem key={p.id} value={p.id}>
                               {p.host}:{p.port} ({p.country}) - {p.protocol}
+                              {p.note ? ` • Note: ${p.note}` : null}
                             </SelectItem>
                           ))
                         )}
@@ -769,6 +807,7 @@ const Users = () => {
                             </div>
                             <div className="text-sm text-gray-500">
                               {proxy.protocol} • {proxy.country} • Status: {proxy.status}
+                              {proxy.note ? ` • Note: ${proxy.note}` : null}
                             </div>
                           </div>
                           <Button

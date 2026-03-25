@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, Wifi, Monitor, Key, AppWindow, Activity, Settings, MessageCircle, Fingerprint, Shield, ShieldOff, LogOut, User } from 'lucide-react';
+import { LayoutDashboard, Users, Wifi, Monitor, Key, AppWindow, Activity, Settings, MessageCircle, Fingerprint, Shield, ShieldOff, LogOut, User, RefreshCw } from 'lucide-react';
 
 import { useAuth } from '../../contexts/AuthContext';
 import { useChatNotifications } from '../../hooks/use-chat-notifications';
+import { useToast } from '../../hooks/use-toast';
 import { proxiesService } from '../../services/proxies.service';
 import { Button } from '../ui/button';
 
@@ -13,6 +14,7 @@ const Sidebar = () => {
   const { user, logout } = useAuth();
   const isAdmin = !!(user && user.role === 'admin');
   const { unreadCount, clearNotifications } = useChatNotifications();
+  const { toast } = useToast();
   
   // Proxy status state (only for non-admin users)
   const [proxyStatus, setProxyStatus] = useState({ loading: true, proxy: null });
@@ -135,6 +137,33 @@ const Sidebar = () => {
             );
           })}
         </nav>
+
+        {/* Update Check Button (Admin Only) */}
+        {isAdmin && (
+          <div className="px-3 pb-2">
+            <button
+              onClick={() => {
+                if (window.electronAPI?.updater?.checkForUpdates) {
+                  try {
+                    sessionStorage.setItem('manualUpdateCheck', 'true');
+                    window.electronAPI.updater.checkForUpdates();
+                    toast({ title: 'Checking for updates...', description: 'Please wait while we check for the latest version.' });
+                  } catch (err) {
+                    console.error('Update check failed:', err);
+                    toast({ title: 'Update Check Failed', description: 'Could not connect to update server.', variant: 'destructive' });
+                  }
+                } else {
+                  console.error('Electron API not found');
+                  toast({ title: 'Error', description: 'Update API not available. Try restarting the app.', variant: 'destructive' });
+                }
+              }}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800/50 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors border border-transparent dark:border-gray-700/50"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span className="font-medium">Check for Updates</span>
+            </button>
+          </div>
+        )}
 
         {/* Footer - Compact User Profile & Logout */}
         <div className="p-3">

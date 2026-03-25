@@ -63,6 +63,7 @@ class UserUpdate(BaseModel):
     """User update model"""
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     email: Optional[str] = Field(None, min_length=1, max_length=255)  # No strict pattern - allow dots and common formats
+    password: Optional[str] = Field(None, min_length=8)
     name: Optional[str] = Field(None, max_length=255)
     role: Optional[UserRole] = None
     status: Optional[UserStatus] = None
@@ -89,6 +90,7 @@ class ProxyBase(BaseModel):
     password: Optional[str] = Field(None, max_length=100)
     country: str = Field(..., min_length=2, max_length=2)  # ISO country code
     status: ProxyStatus = ProxyStatus.ACTIVE
+    note: Optional[str] = Field(None, max_length=500)
     
     class Config:
         use_enum_values = True  # Use enum values in dict()
@@ -112,6 +114,7 @@ class ProxyUpdate(BaseModel):
     password: Optional[str] = Field(None, max_length=100)
     country: Optional[str] = Field(None, min_length=2, max_length=2)
     status: Optional[ProxyStatus] = None
+    note: Optional[str] = Field(None, max_length=500)
     
     def dict(self, **kwargs):
         """Override dict to normalize protocol"""

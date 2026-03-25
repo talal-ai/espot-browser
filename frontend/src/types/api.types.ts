@@ -46,6 +46,7 @@ export interface Proxy {
   password?: string | null;
   country: string;
   status: 'active' | 'inactive' | 'testing' | 'failed';
+  note?: string;
   created_at: string;
   updated_at: string;
   last_checked?: string | null;
@@ -61,6 +62,7 @@ export interface ProxyCreate {
   password?: string;
   country: string;
   status?: 'active' | 'inactive' | 'testing' | 'failed';
+  note?: string;
 }
 
 export interface ProxyUpdate {
@@ -71,8 +73,10 @@ export interface ProxyUpdate {
   password?: string;
   country?: string;
   status?: 'active' | 'inactive' | 'testing' | 'failed';
+  note?: string;
 }
 
+// User-Proxy Assignment Types
 // Fingerprint Profile Types
 export interface FingerprintProfile {
   id: string;

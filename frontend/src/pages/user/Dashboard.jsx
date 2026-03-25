@@ -13,6 +13,7 @@ import { usersService } from '../../services/users.service';
 import fingerprintsService from '@/services/fingerprints.service';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '../../lib/supabase';
 
 // Helper function to get service icon based on name or category
 const getServiceIcon = (serviceName, category) => {
@@ -324,6 +325,26 @@ const UserDashboard = () => {
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  // Real-time listener for service updates (e.g. dynamic URL bar toggling)
+  useEffect(() => {
+    if (!user?.id) return;
+    
+    const channel = supabase
+      .channel('public:services')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'services' }, (payload) => {
+        const { id, show_url_bar } = payload.new;
+        if (window.electronAPI?.service?.updateUrlBar) {
+          window.electronAPI.service.updateUrlBar(id, !!show_url_bar);
+          console.log(`[ESPOT Realtime] URL bar toggled for service ${id}: ${show_url_bar}`);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   if (loading || !user) {
     return <PageSkeleton mode="dashboard" />;

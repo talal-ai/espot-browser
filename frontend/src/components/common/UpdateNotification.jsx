@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { toast } from 'sonner';
+import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Download, RefreshCw, X } from 'lucide-react';
 
 const UpdateNotification = () => {
+  const { toast } = useToast();
   const [status, setStatus] = useState('idle'); // idle, checking, available, downloading, downloaded, error
   const [progress, setProgress] = useState(0);
   const [versionInfo, setVersionInfo] = useState(null);
@@ -22,11 +23,14 @@ const UpdateNotification = () => {
     listeners.push(window.electron.updater.onUpdateAvailable((info) => {
       setStatus('available');
       setVersionInfo(info);
-      // Removed toast.info to avoid duplicate notifications (UI component handles it)
+      sessionStorage.removeItem('manualUpdateCheck');
     }));
 
-    listeners.push(window.electron.updater.onUpdateNotAvailable(() => {
-      // functional but strictly handled elsewhere if manual check
+    listeners.push(window.electron.updater.onUpdateNotAvailable((info) => {
+      if (sessionStorage.getItem('manualUpdateCheck')) {
+        toast({ title: 'You are up to date', description: `Espot Browser v${info?.version || ''} is the latest version available.` });
+        sessionStorage.removeItem('manualUpdateCheck');
+      }
     }));
 
     listeners.push(window.electron.updater.onDownloadProgress((prog) => {
@@ -39,7 +43,7 @@ const UpdateNotification = () => {
     listeners.push(window.electron.updater.onUpdateDownloaded((info) => {
       setStatus('downloaded');
       setVersionInfo(info);
-      toast.success("Update downloaded and ready to install!");
+      toast({ title: 'Update Ready', description: 'Update downloaded and ready to install!' });
     }));
 
     listeners.push(window.electron.updater.onError((err) => {

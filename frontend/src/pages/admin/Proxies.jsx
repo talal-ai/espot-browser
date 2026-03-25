@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Plus, Edit, Trash2, MapPin, RefreshCw, TestTube, Power, Globe, CheckCircle, Wifi, Server, Activity, Download, Upload, FileText, AlertCircle } from 'lucide-react';
+import { Plus, Edit, Trash2, MapPin, RefreshCw, TestTube, Power, Globe, CheckCircle, Wifi, Server, Activity, Download, Upload, FileText, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
@@ -18,6 +18,7 @@ const Proxies = () => {
   const { proxies, loading, createProxy, updateProxy, deleteProxy, testProxy, activateGlobally, deactivateGlobally, getGlobalStatus, refresh, testingProxyId } = useProxies();
   const { currentIP, proxyIP } = useProxySettings();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [editingProxy, setEditingProxy] = useState(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [proxyToDelete, setProxyToDelete] = useState(null);
@@ -43,7 +44,8 @@ const Proxies = () => {
     username: '',
     password: '',
     country: 'US',
-    status: 'active'
+    status: 'active',
+    note: ''
   });
 
   // Load global proxy status
@@ -100,7 +102,8 @@ const Proxies = () => {
       username: proxy.username || '',
       password: proxy.password || '',
       country: proxy.country || proxy.location || 'US',
-      status: proxy.status
+      status: proxy.status,
+      note: proxy.note || ''
     });
     setIsDialogOpen(true);
   };
@@ -113,7 +116,8 @@ const Proxies = () => {
       username: '',
       password: '',
       country: 'US',
-      status: 'active'
+      status: 'active',
+      note: ''
     });
     setEditingProxy(null);
   };
@@ -394,6 +398,15 @@ http:45.33.32.156:3128::`;
       )
     },
     {
+      key: 'note',
+      label: 'Note',
+      render: (value) => (
+        <span className="text-sm text-gray-500 max-w-[150px] truncate block" title={value || ''}>
+          {value || '-'}
+        </span>
+      )
+    },
+    {
       key: 'speed_score',
       label: 'Speed',
       render: (value) => value !== null && value !== undefined ? (() => {
@@ -598,13 +611,23 @@ http:45.33.32.156:3128::`;
                   </div>
                   <div>
                     <Label htmlFor="password">Password (Optional)</Label>
-                    <Input
-                      id="password"
-                      type="password"
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      placeholder="••••••••"
-                    />
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        placeholder="••••••••"
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-none"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div>
@@ -631,6 +654,16 @@ http:45.33.32.156:3128::`;
                       <SelectItem value="failed">Failed</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div>
+                  <Label htmlFor="note">Note (Optional)</Label>
+                  <Input
+                    id="note"
+                    value={formData.note}
+                    onChange={(e) => setFormData({ ...formData, note: e.target.value })}
+                    placeholder="Documentation or purpose for this proxy..."
+                    maxLength={500}
+                  />
                 </div>
                 <div className="flex justify-end gap-3 pt-4">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
