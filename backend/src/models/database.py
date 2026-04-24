@@ -45,10 +45,13 @@ class FingerprintType(str, Enum):
     HARDWARE = "hardware"
 
 # User Models
+_EMAIL_PATTERN = r"^[^@]+@[^@]+\.[^@]+$"
+
+
 class UserBase(BaseModel):
-    """Base user model"""
+    """Base user model (email relaxed so DB rows / legacy data still deserialize)."""
     username: str = Field(..., min_length=3, max_length=50)
-    email: str = Field(..., pattern=r'^[^@]+@[^@]+\.[^@]+$')
+    email: str = Field(..., max_length=255)
     name: Optional[str] = Field(None, max_length=255)
     role: UserRole = UserRole.USER
     status: UserStatus = UserStatus.ACTIVE
@@ -57,11 +60,12 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     """User creation model"""
     password: str = Field(..., min_length=8)
+    email: str = Field(..., pattern=_EMAIL_PATTERN)
 
 class UserUpdate(BaseModel):
     """User update model"""
     username: Optional[str] = Field(None, min_length=3, max_length=50)
-    email: Optional[str] = Field(None, pattern=r'^[^@]+@[^@]+\.[^@]+$')
+    email: Optional[str] = Field(None, pattern=_EMAIL_PATTERN)
     name: Optional[str] = Field(None, max_length=255)
     role: Optional[UserRole] = None
     status: Optional[UserStatus] = None

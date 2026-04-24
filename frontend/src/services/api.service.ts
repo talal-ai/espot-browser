@@ -110,6 +110,7 @@ class ApiService {
   ): Promise<ApiResponse<T>> {
     try {
       const response = await apiClient.get<T>(url, { params, ...config });
+      console.log('🚀 API Response:', response.data);
       return { success: true, data: response.data };
     } catch (error) {
       return this.handleError(error);
