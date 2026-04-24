@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { app, BrowserWindow, ipcMain, Menu, shell, nativeImage, session, net } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import path from 'path';
-import { FingerprintProfile, createSpoofedWindow, applySpoofingProfile } from './fingerprint-injector';
+import { FingerprintProfile, createSpoofedWindow, applySpoofingProfile, applySpoofingToPartition } from './fingerprint-injector';
 import { generateModernAutofillScript } from './autofill-generator';
 import axios from 'axios';
 import contextMenu from 'electron-context-menu';
@@ -135,6 +135,7 @@ interface UserSession {
 }
 
 const userSessions = new Map<string, UserSession>();
+const activeServiceWindows = new Map<string, BrowserWindow>();
 
 // Create the main window
 function createMainWindow() {
@@ -1153,15 +1154,44 @@ function setupIpcHandlers() {
   // SERVICE LAUNCH WITH AUTOFILL + FINGERPRINT SPOOFING
   // ============================================================================
 
+  ipcMain.handle('service:updateUrlBar', async (_, serviceId: string, showUrlBar: boolean) => {
+    try {
+      const displayStyle = showUrlBar ? 'flex' : 'none';
+      let found = false;
+      for (const [key, window] of activeServiceWindows.entries()) {
+        if (key.endsWith(`-${serviceId}`) && !window.isDestroyed()) {
+          window.webContents.executeJavaScript(`
+            var tb = document.getElementById('toolbar');
+            if(tb) tb.style.display = '${displayStyle}';
+          `).catch(() => {});
+          found = true;
+        }
+      }
+      return { success: true, updated: found };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  });
+
   ipcMain.handle('service:launch', async (_, launchData: {
     serviceId: string;
     url: string;
     username: string;
     password: string;
-    userId?: string;  // Optional user ID to apply their fingerprint profile
+    userId?: string;       // Optional user ID to apply their fingerprint profile
+    showUrlBar?: boolean;  // Whether to show the address bar in the service window
   }) => {
     try {
       console.log(`🚀 Launching service: ${launchData.url}`);
+
+      const serviceKey = `${launchData.userId || 'common'}-${launchData.serviceId}`;
+      const existingWindow = activeServiceWindows.get(serviceKey);
+      if (existingWindow && !existingWindow.isDestroyed()) {
+        console.log(`[${launchData.serviceId}] ℹ️ Service already running, refocusing...`);
+        if (existingWindow.isMinimized()) existingWindow.restore();
+        existingWindow.focus();
+        return { success: true, message: 'Focused existing window' };
+      }
 
       // Get active fingerprint profile for spoofing
       let profile: FingerprintProfile | null = activeProfile;
@@ -1183,46 +1213,51 @@ function setupIpcHandlers() {
       }
 
       // Create isolated browser window - STARTS HIDDEN
-      // If we have a profile, use spoofed window; otherwise plain window
+      // Create a shell window — the service site loads inside a <webview> with an address bar
       let serviceWindow: BrowserWindow;
 
+      serviceWindow = new BrowserWindow({
+        width: 1280,
+        height: 900,
+        show: false,
+        backgroundColor: '#0a0a0a',
+        icon: getAppIconPath(),
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          webviewTag: true,   // shell contains a <webview> element showing the service site
+          spellcheck: false,
+          devTools: isDev,
+        },
+      });
+
+      // Apply fingerprint spoofing to the service session partition so the <webview> inherits it
+      let spoofingPreloadPath: string | null = null;
       if (profile) {
-        serviceWindow = await createSpoofedWindow(profile, launchData.url, {
-          width: 1280,
-          height: 900,
-          show: false,  // CRITICAL: Start hidden to prevent any flash
-          backgroundColor: '#0a0a0a',
-          icon: getAppIconPath(),
-          webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-            partition: `persist:service-${launchData.serviceId}`,
-            spellcheck: false,
-            devTools: isDev,
-            ...(STRICT_WEBRTC_ENABLED ? { webSecurity: true, sandbox: true } : {}),
-          },
-        });
-        console.log('[ESPOT] ✅ Service window created with fingerprint spoofing');
+        spoofingPreloadPath = await applySpoofingToPartition(
+          profile,
+          `persist:service-${launchData.serviceId}`
+        );
+        console.log('[ESPOT] ✅ Fingerprint spoofing applied to service session');
       } else {
-        serviceWindow = new BrowserWindow({
-          width: 1280,
-          height: 900,
-          show: false,
-          backgroundColor: '#0a0a0a',
-          icon: getAppIconPath(),
-          webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-            partition: `persist:service-${launchData.serviceId}`,
-            spellcheck: false,
-            devTools: isDev,
-            ...(STRICT_WEBRTC_ENABLED ? { webSecurity: true, sandbox: true } : {}),
-          },
-        });
         console.warn('[ESPOT] ⚠️ Service window created WITHOUT fingerprint spoofing');
       }
 
-      console.log(`[${launchData.serviceId}] ✅ Service window created (hidden)`);
+      // Clean up the spoofing temp preload file when the window closes
+      if (spoofingPreloadPath) {
+        const spoofFile = spoofingPreloadPath;
+        serviceWindow.on('closed', () => {
+          try { require('fs').unlinkSync(spoofFile); } catch (_) { }
+          activeServiceWindows.delete(serviceKey);
+        });
+      } else {
+        serviceWindow.on('closed', () => {
+          activeServiceWindows.delete(serviceKey);
+        });
+      }
+
+      activeServiceWindows.set(serviceKey, serviceWindow);
+      console.log(`[${launchData.serviceId}] ✅ Service shell window created (hidden)`);
 
       // Apply proxy if active (check user-specific proxy first, then global proxy)
       let proxyToApply = activeProxyConfig;
@@ -1243,20 +1278,13 @@ function setupIpcHandlers() {
         console.log(`[${launchData.serviceId}] 🛡️ Proxy applied to service window`);
       }
 
-      // Apply WebRTC hardening
-      if (STRICT_WEBRTC_ENABLED) {
-        hardenWebRTC(serviceWindow);
-        const ses = session.fromPartition(`persist:service-${launchData.serviceId}`);
-        applyStrictPermissions(ses);
-      }
-
       // Track states
       const shouldInjectCredentials = !!(launchData.username && launchData.password);
       let overlayRemoved = false;
       let autofillInjected = false;
       let windowShown = false;
 
-      // Overlay injection script
+      // Overlay injection script (injected into the webview's content, not the shell)
       const overlayScript = `
         (function() {
           if (document.getElementById('espot-loading-overlay')) return;
@@ -1323,9 +1351,12 @@ function setupIpcHandlers() {
       const initialUrl = new URL(launchData.url);
       const initialPath = initialUrl.pathname.toLowerCase();
 
-      // Navigation check - ONLY works after autofill is injected
+      // Reference to the webview's WebContents — set when did-attach-webview fires
+      let webviewWC: Electron.WebContents | null = null;
+
+      // Navigation check — only active after autofill has been injected
       const checkLoginSuccess = (url: string) => {
-        if (overlayRemoved || !autofillInjected) return;
+        if (overlayRemoved || !autofillInjected || !webviewWC) return;
 
         try {
           const currentUrl = new URL(url);
@@ -1338,7 +1369,7 @@ function setupIpcHandlers() {
           if (!isLoginPage && currentPath !== initialPath) {
             console.log(`[${launchData.serviceId}] 🎉 Login successful! → ${currentPath}`);
             overlayRemoved = true;
-            serviceWindow.webContents.executeJavaScript(`
+            webviewWC.executeJavaScript(`
               if (window.espotOverlayTimeout) clearTimeout(window.espotOverlayTimeout);
               if (window.removeEspotOverlay) window.removeEspotOverlay();
             `).catch(() => { });
@@ -1346,61 +1377,129 @@ function setupIpcHandlers() {
         } catch (e) { }
       };
 
-      // Set up event handlers BEFORE loading URL
-      serviceWindow.webContents.on('dom-ready', async () => {
-        // Inject overlay immediately ONLY if we have credentials
-        if (shouldInjectCredentials) {
-          await serviceWindow.webContents.executeJavaScript(overlayScript).catch(() => { });
+      if (launchData.showUrlBar) {
+        // ── URL BAR MODE: load the shell HTML which embeds a <webview> with a toolbar ──
 
-          // Show window ONLY after overlay is injected
-          if (!windowShown) {
+        // When the <webview> inside the shell is attached, wire up script injection
+        serviceWindow.webContents.on('did-attach-webview', (_, wvContents) => {
+          webviewWC = wvContents;
+          console.log(`[${launchData.serviceId}] 🔗 Webview attached to shell`);
+
+          wvContents.on('dom-ready', async () => {
+            if (shouldInjectCredentials) {
+              await wvContents.executeJavaScript(overlayScript).catch(() => { });
+              if (!windowShown) {
+                windowShown = true;
+                serviceWindow.show();
+                console.log(`[${launchData.serviceId}] 🎨 Overlay visible, window shown`);
+              }
+            }
+          });
+
+          wvContents.on('did-finish-load', async () => {
+            await wvContents.executeJavaScript(
+              `Object.defineProperty(navigator, 'webdriver', { get: () => undefined });`
+            ).catch(() => { });
+            if (shouldInjectCredentials) {
+              try {
+                await wvContents.executeJavaScript(autofillScript);
+                autofillInjected = true;
+                console.log(`[${launchData.serviceId}] ✅ Autofill injected`);
+              } catch (e) { }
+            }
+          });
+
+          wvContents.on('did-navigate', (_, url) => {
+            if (shouldInjectCredentials) checkLoginSuccess(url);
+          });
+
+          wvContents.on('did-navigate-in-page', (_, url) => {
+            if (shouldInjectCredentials) {
+              checkLoginSuccess(url);
+              const reinjectedScript = generateModernAutofillScript(launchData.username, launchData.password, launchData.url);
+              wvContents.executeJavaScript(reinjectedScript).catch(() => { });
+            }
+          });
+        });
+
+        // Show window when shell toolbar is ready (no-credentials path)
+        serviceWindow.webContents.on('did-finish-load', () => {
+          if (!shouldInjectCredentials && !windowShown) {
             windowShown = true;
             serviceWindow.show();
-            console.log(`[${launchData.serviceId}] 🎨 Overlay visible, window shown`);
+            console.log(`[${launchData.serviceId}] ✅ Window shown (No credentials, URL bar mode)`);
           }
-        } else {
-          // No credentials = No overlay = Show immediately
-          if (!windowShown) {
+        });
+
+        const shellInDist   = path.join(__dirname, 'service-shell.html');
+        const shellInSource = path.join(__dirname, '..', 'electron', 'service-shell.html');
+        const shellPath     = fs.existsSync(shellInDist) ? shellInDist : shellInSource;
+        console.log(`[${launchData.serviceId}] 🌐 Loading shell (URL bar ON): ${launchData.url}`);
+        await serviceWindow.loadFile(shellPath, {
+          query: { url: launchData.url, partition: `persist:service-${launchData.serviceId}` },
+        });
+
+      } else {
+        // ── NO URL BAR MODE: load the service URL directly into the window ──
+
+        serviceWindow.webContents.on('dom-ready', async () => {
+          if (shouldInjectCredentials) {
+            await serviceWindow.webContents.executeJavaScript(overlayScript).catch(() => { });
+            if (!windowShown) {
+              windowShown = true;
+              serviceWindow.show();
+              console.log(`[${launchData.serviceId}] 🎨 Overlay visible, window shown`);
+            }
+          } else if (!windowShown) {
             windowShown = true;
             serviceWindow.show();
             console.log(`[${launchData.serviceId}] ✅ Window shown (No credentials)`);
           }
-        }
-      });
+        });
 
-      serviceWindow.webContents.on('did-finish-load', async () => {
-        // Remove webdriver detection
-        await serviceWindow.webContents.executeJavaScript(`
-          Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        `).catch(() => { });
+        serviceWindow.webContents.on('did-finish-load', async () => {
+          await serviceWindow.webContents.executeJavaScript(
+            `Object.defineProperty(navigator, 'webdriver', { get: () => undefined });`
+          ).catch(() => { });
+          if (shouldInjectCredentials) {
+            try {
+              await serviceWindow.webContents.executeJavaScript(autofillScript);
+              autofillInjected = true;
+              console.log(`[${launchData.serviceId}] ✅ Autofill injected`);
+            } catch (e) { }
+          }
+        });
 
-        // Inject autofill
-        if (shouldInjectCredentials) {
-          try {
-            await serviceWindow.webContents.executeJavaScript(autofillScript);
-            autofillInjected = true;
-            console.log(`[${launchData.serviceId}] ✅ Autofill injected`);
-          } catch (e) { }
-        }
-      });
+        serviceWindow.webContents.on('did-navigate', (_, url) => {
+          if (shouldInjectCredentials) {
+            // checkLoginSuccess uses webviewWC — redirect it to serviceWindow.webContents
+            if (overlayRemoved || !autofillInjected) return;
+            try {
+              const currentUrl  = new URL(url);
+              const currentPath = currentUrl.pathname.toLowerCase();
+              const isLoginPage = currentPath.includes('login') || currentPath.includes('signin') || currentPath.includes('auth');
+              if (!isLoginPage && currentPath !== initialPath) {
+                overlayRemoved = true;
+                serviceWindow.webContents.executeJavaScript(
+                  `if (window.espotOverlayTimeout) clearTimeout(window.espotOverlayTimeout); if (window.removeEspotOverlay) window.removeEspotOverlay();`
+                ).catch(() => { });
+              }
+            } catch (e) { }
+          }
+        });
 
-      serviceWindow.webContents.on('did-navigate', (_, url) => {
-        if (shouldInjectCredentials) checkLoginSuccess(url);
-      });
-      serviceWindow.webContents.on('did-navigate-in-page', (_, url) => {
-        if (shouldInjectCredentials) {
-          checkLoginSuccess(url);
-          // Re-inject autofill for multi-step logins using modern flow
-          const reinjectedScript = generateModernAutofillScript(launchData.username, launchData.password, launchData.url);
-          serviceWindow.webContents.executeJavaScript(reinjectedScript).catch(() => { });
-        }
-      });
+        serviceWindow.webContents.on('did-navigate-in-page', (_, url) => {
+          if (shouldInjectCredentials) {
+            const reinjectedScript = generateModernAutofillScript(launchData.username, launchData.password, launchData.url);
+            serviceWindow.webContents.executeJavaScript(reinjectedScript).catch(() => { });
+          }
+        });
 
-      // Load the service URL
-      console.log(`[${launchData.serviceId}] 🌐 Loading: ${launchData.url}`);
-      await serviceWindow.loadURL(launchData.url);
+        console.log(`[${launchData.serviceId}] 🌐 Loading direct (URL bar OFF): ${launchData.url}`);
+        await serviceWindow.loadURL(launchData.url);
+      }
 
-      console.log(`[${launchData.serviceId}] ✅ Service launched`);
+      console.log(`[${launchData.serviceId}] ✅ Service launched (showUrlBar=${launchData.showUrlBar ?? false})`);
 
       return { success: true, message: 'Service launched with autofill' };
 
@@ -2161,7 +2260,9 @@ function setupAutoUpdater() {
   autoUpdater.autoDownload = false; // Manual download
   autoUpdater.autoInstallOnAppQuit = true; // Install update when user quits app
   
-  // If a local generic update server is configured for testing, use it
+  // If a custom update server is set (e.g. for testing), use it. Otherwise electron-updater
+  // uses GitHub Releases from package.json build.publish (owner/repo) and expects latest.yml
+  // in the release assets.
   if (process.env.UPDATE_SERVER_URL) {
     try {
       autoUpdater.setFeedURL({ provider: 'generic', url: process.env.UPDATE_SERVER_URL });
@@ -2212,12 +2313,20 @@ function setupAutoUpdater() {
     sendUpdateEvents('updater:status', 'Update ready to install.');
   });
 
-  // Check for updates 10 seconds after app start
-  setTimeout(() => {
+  // Reusable background check function
+  const performUpdateCheck = () => {
+    console.log('[AUTO-UPDATE] Triggering background update check...');
     autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-      console.error('[AUTO-UPDATE] Failed to check for updates:', err);
+      console.error('[AUTO-UPDATE] Failed to check for updates in background:', err);
     });
-  }, 10000);
+  };
+
+  // Initial check 10 seconds after app start
+  setTimeout(performUpdateCheck, 10000);
+
+  // Periodic automatic check every 4 hours (4 * 60 * 60 * 1000 ms = 14,400,000 ms)
+  const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+  setInterval(performUpdateCheck, FOUR_HOURS_MS);
 }
 
 /**

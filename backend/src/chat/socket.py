@@ -1,7 +1,7 @@
 import socketio
 from typing import Dict, Any
 from src.auth.jwt import decode_token
-from .service import add_message, add_read_receipt
+from .service import add_message, add_read_receipt, get_conversation_created_by
 from src.services.supabase_service import supabase_service
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=[
@@ -45,6 +45,12 @@ async def connect(sid, environ, auth):
     try:
         user = await _user_from_auth(auth)
         await sio.save_session(sid, {"user": user})
+        # Admins join a shared room so they receive new_message for any conversation (for badge/list updates)
+        if user.get("role") == "admin":
+            await sio.enter_room(sid, "room:admin")
+        # Users join a personal room so they receive new_message when admin replies (even if chat not open)
+        else:
+            await sio.enter_room(sid, f"room:user:{user['id']}")
     except Exception:
         return False
 
@@ -72,16 +78,26 @@ async def message(sid, data):
     if not conversation_id or not ciphertext or not nonce:
         return
     msg = await add_message(conversation_id, user["id"], user.get("role", "user"), ciphertext, nonce, content_type, attachment_url, attachment_type, file_size)
-    await sio.emit("new_message", {
-        "conversationId": conversation_id, 
-        "message": msg, 
+    payload = {
+        "conversationId": conversation_id,
+        "message": msg,
         "tempId": temp_id,
         "sender": {
             "id": user["id"],
             "username": user.get("username"),
             "role": user.get("role", "user")
         }
-    }, room=f"room:{conversation_id}")
+    }
+    # Notify participants who have this conversation open
+    await sio.emit("new_message", payload, room=f"room:{conversation_id}")
+    # When a user sends: notify all connected admins for badge/list updates
+    if user.get("role") != "admin":
+        await sio.emit("new_message", payload, room="room:admin")
+    # When an admin sends: notify the conversation owner (user) so they get it even if chat not open
+    else:
+        created_by = await get_conversation_created_by(conversation_id)
+        if created_by:
+            await sio.emit("new_message", payload, room=f"room:user:{created_by}")
 
 @sio.event
 async def read_receipt(sid, data):

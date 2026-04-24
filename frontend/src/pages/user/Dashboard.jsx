@@ -13,6 +13,7 @@ import { usersService } from '../../services/users.service';
 import fingerprintsService from '@/services/fingerprints.service';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '../../lib/supabase';
 
 // Helper function to get service icon based on name or category
 const getServiceIcon = (serviceName, category) => {
@@ -41,6 +42,7 @@ const UserDashboard = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
+  const loadedForUserIdRef = React.useRef(null); // avoid full loading when effect re-runs (e.g. after window focus refreshes user)
   const [userServices, setUserServices] = useState([]);
   const [userDetails, setUserDetails] = useState(null);
   const [fingerprintProfiles, setFingerprintProfiles] = useState([]);
@@ -56,123 +58,128 @@ const UserDashboard = () => {
 
   const [now, setNow] = useState(new Date());
 
+  const filterLaunchableServices = (items) => {
+    const current = new Date();
+    return (items || []).filter((s) => {
+      if (s.status !== 'active') return false;
+      if (s.expires_at && new Date(s.expires_at) < current) return false;
+      return true;
+    });
+  };
+
   useEffect(() => {
     const loadData = async () => {
+      if (!user?.id) {
+        setLoading(false);
+        loadedForUserIdRef.current = null;
+        return;
+      }
+      const isInitialLoad = loadedForUserIdRef.current !== user.id;
+      if (isInitialLoad) loadedForUserIdRef.current = user.id;
       try {
-        setLoading(true);
-        if (user?.id) {
-          const res = await servicesService.getMyServices();
-          if (res.success) setUserServices(res.data || []);
+        if (isInitialLoad) setLoading(true);
+        // Load core data first so the dashboard can show quickly; then load the rest in parallel
+        const [res, ures] = await Promise.all([
+          servicesService.getMyServices(),
+          usersService.getUser(user.id),
+        ]);
+        if (res.success) setUserServices(filterLaunchableServices(res.data));
+        if (ures.success) setUserDetails(ures.data);
+        // Show dashboard as soon as services + user details are ready (main content)
+        if (isInitialLoad) setLoading(false);
 
-          const ures = await usersService.getUser(user.id);
-          if (ures.success) setUserDetails(ures.data);
-
-          // Load fingerprint profiles (use user endpoint, not admin)
-          console.log('[DEBUG] Calling getMyProfiles for user:', user.id);
-          const fpRes = await fingerprintsService.getMyProfiles();
-          console.log('[DEBUG] getMyProfiles response:', fpRes);
-          if (fpRes.success) {
-            const profiles = fpRes.data || [];
-            console.log('[DEBUG] Profiles received:', profiles.length, profiles);
-            setFingerprintProfiles(profiles);
-            // Check for default and AUTO-ACTIVATE in Electron
-            const def = profiles.find(p => p.is_default);
-            if (def && def.profile) {
-              setActiveProfileId(def.fingerprint_profile_id);
-              setActiveProfile(def.profile);
-
-              // 🔥 AUTO-ACTIVATE default profile in Electron on app load
-              // Only attempt if running in Electron with proper IPC support
-              // AND we haven't already activated in this session (prevents duplicate calls)
-              if (window.electron?.fingerprint?.setActive && !hasActivatedProfileInSession) {
-                hasActivatedProfileInSession = true; // Prevent duplicate calls
-                try {
-                  const electronProfile = {
-                    id: def.profile.id,
-                    name: def.profile.name,
-                    user_agent: def.profile.user_agent,
-                    platform: def.profile.platform || 'Win32',
-                    hardware_concurrency: def.profile.hardware_concurrency || 8,
-                    device_memory: def.profile.device_memory || 8,
-                    screen_width: def.profile.screen_width || 1920,
-                    screen_height: def.profile.screen_height || 1080,
-                    color_depth: def.profile.color_depth || 24,
-                    pixel_ratio: def.profile.pixel_ratio || 1,
-                    timezone: def.profile.timezone || 'America/New_York',
-                    language: def.profile.language || 'en-US',
-                    locale: def.profile.locale || 'en-US',
-                    webgl_vendor: def.profile.webgl_vendor || 'Google Inc. (NVIDIA)',
-                    webgl_renderer: def.profile.webgl_renderer || 'ANGLE (NVIDIA, GeForce GTX 1080)',
-                    webgl_params: def.profile.webgl_params || {},
-                    audio_context: def.profile.audio_context_params || {},
-                    seed: def.profile.seed || Math.floor(Math.random() * 1000000),
-                    max_touch_points: def.profile.max_touch_points || 0,
-                  };
-                  await window.electron.fingerprint.setActive(electronProfile, user.id);
-                  console.log('[ESPOT] ✅ Auto-activated default profile:', electronProfile.name);
-                } catch (e) {
-                  // Silently fail - user can manually activate profile
-                  console.warn('[ESPOT] Auto-activate skipped (IPC not ready or browser mode):', e.message);
-                }
-              }
-            }
-          } else {
-            console.error('[DEBUG] Failed to load fingerprint profiles:', fpRes.error, fpRes);
-          }
-          
-          // Load user proxies
-          console.log('[DEBUG] Loading user proxies for user:', user.id);
-          const proxyRes = await proxiesService.getUserProxies(user.id);
-          console.log('[DEBUG] getUserProxies response:', proxyRes);
-          if (proxyRes.success) {
-            const proxies = proxyRes.data || [];
-            console.log('[DEBUG] Proxies received:', proxies.length, proxies);
-            setUserProxies(proxies);
-            
-            // Find default proxy (or first available) and auto-activate
-            const defaultProxy = proxies.find(p => p.is_default) || (proxies.length > 0 ? proxies[0] : null);
-            if (defaultProxy) {
-              setActiveProxy(defaultProxy);
-              console.log('🔥 Auto-activating proxy for user:', user.id, defaultProxy);
-              
-              // Activate proxy in Electron using per-user session (mirrors admin behavior)
-              // This routes ALL browser traffic for this user through their assigned proxy
-              if (window.electronAPI?.proxy?.activateForUser) {
-                try {
-                  const proxyConfig = {
-                    protocol: defaultProxy.protocol || 'http',
-                    host: defaultProxy.host,
-                    port: defaultProxy.port,
-                    username: defaultProxy.username || '',
-                    password: defaultProxy.password || ''
-                  };
-                  
-                  const result = await window.electronAPI.proxy.activateForUser(user.id, proxyConfig);
-                  
-                  if (result.success) {
-                    console.log('✅ User proxy activated in Electron:', result);
-                    toast({
-                      title: '🛡️ Proxy Protection Active',
-                      description: `Your traffic is now routed through ${defaultProxy.country || 'Secure Location'}`,
-                      duration: 4000
-                    });
-                  } else {
-                    console.error('❌ Failed to activate user proxy:', result.error);
+        // Load fingerprints and proxies in background (non-blocking for UI)
+        const loadFingerprints = async () => {
+          try {
+            const fpRes = await fingerprintsService.getMyProfiles();
+            if (fpRes.success) {
+              const profiles = fpRes.data || [];
+              setFingerprintProfiles(profiles);
+              const def = profiles.find(p => p.is_default);
+              if (def && def.profile) {
+                setActiveProfileId(def.fingerprint_profile_id);
+                setActiveProfile(def.profile);
+                if (window.electron?.fingerprint?.setActive && !hasActivatedProfileInSession) {
+                  hasActivatedProfileInSession = true;
+                  try {
+                    const electronProfile = {
+                      id: def.profile.id,
+                      name: def.profile.name,
+                      user_agent: def.profile.user_agent,
+                      platform: def.profile.platform || 'Win32',
+                      hardware_concurrency: def.profile.hardware_concurrency || 8,
+                      device_memory: def.profile.device_memory || 8,
+                      screen_width: def.profile.screen_width || 1920,
+                      screen_height: def.profile.screen_height || 1080,
+                      color_depth: def.profile.color_depth || 24,
+                      pixel_ratio: def.profile.pixel_ratio || 1,
+                      timezone: def.profile.timezone || 'America/New_York',
+                      language: def.profile.language || 'en-US',
+                      locale: def.profile.locale || 'en-US',
+                      webgl_vendor: def.profile.webgl_vendor || 'Google Inc. (NVIDIA)',
+                      webgl_renderer: def.profile.webgl_renderer || 'ANGLE (NVIDIA, GeForce GTX 1080)',
+                      webgl_params: def.profile.webgl_params || {},
+                      audio_context: def.profile.audio_context_params || {},
+                      seed: def.profile.seed || Math.floor(Math.random() * 1000000),
+                      max_touch_points: def.profile.max_touch_points || 0,
+                    };
+                    await window.electron.fingerprint.setActive(electronProfile, user.id);
+                    console.log('[ESPOT] ✅ Auto-activated default profile:', electronProfile.name);
+                  } catch (e) {
+                    console.warn('[ESPOT] Auto-activate skipped:', e?.message);
                   }
-                } catch (err) {
-                  console.error('❌ Failed to auto-activate proxy:', err);
                 }
-              } else {
-                console.log('ℹ️ Electron proxy API not available (browser mode)');
               }
             }
+          } catch (e) {
+            console.error('[DEBUG] Failed to load fingerprint profiles:', e);
           }
-        }
-      } catch (e) { console.error(e) }
-      finally { setLoading(false); }
+        };
+        const loadProxies = async () => {
+          try {
+            const proxyRes = await proxiesService.getUserProxies(user.id);
+            if (proxyRes.success) {
+              const proxies = proxyRes.data || [];
+              setUserProxies(proxies);
+              const defaultProxy = proxies.find(p => p.is_default) || (proxies.length > 0 ? proxies[0] : null);
+              if (defaultProxy) {
+                setActiveProxy(defaultProxy);
+                if (window.electronAPI?.proxy?.activateForUser) {
+                  try {
+                    const proxyConfig = {
+                      protocol: defaultProxy.protocol || 'http',
+                      host: defaultProxy.host,
+                      port: defaultProxy.port,
+                      username: defaultProxy.username || '',
+                      password: defaultProxy.password || '',
+                    };
+                    const result = await window.electronAPI.proxy.activateForUser(user.id, proxyConfig);
+                    if (result.success) {
+                      toast({
+                        title: '🛡️ Proxy Protection Active',
+                        description: `Your traffic is now routed through ${defaultProxy.country || 'Secure Location'}`,
+                        duration: 4000,
+                      });
+                    }
+                  } catch (err) {
+                    console.error('❌ Failed to auto-activate proxy:', err);
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.error('[DEBUG] Failed to load user proxies:', e);
+          }
+        };
+        void loadFingerprints();
+        void loadProxies();
+      } catch (e) {
+        console.error(e);
+        setLoading(false);
+      }
     };
     loadData();
-  }, [user]);
+  }, [user?.id]); // only reload when logged-in user id changes, not when user object reference changes (e.g. after focus refresh)
 
   const handleActivateProfile = async (fingerprintProfileId) => {
     if (activating) return;
@@ -269,8 +276,23 @@ const UserDashboard = () => {
         ? await servicesService.getSubServiceLaunchCredentials(service.id)
         : await servicesService.getLaunchCredentials(service.id);
 
-      const credentials = credRes.success && credRes.data ? credRes.data : { username: '', password: '', service_url: service.url };
+      if (!credRes.success) {
+        const errMsg = credRes.error?.message || 'Unable to access this service';
+        toast({ variant: 'destructive', title: 'Access denied', description: errMsg });
+        return;
+      }
+
+      const credentials = credRes.data || { username: '', password: '', service_url: service.url };
       const url = credentials.service_url || service.url;
+      const resolvedShowUrlBar = credentials.show_url_bar ?? service.show_url_bar ?? false;
+
+      console.log('[ServiceLaunch] resolved URL bar flag', {
+        serviceId: service.id,
+        serviceName: service.name,
+        fromCredentials: credentials.show_url_bar,
+        fromServiceList: service.show_url_bar,
+        resolvedShowUrlBar,
+      });
 
       if (window.electronAPI?.service?.launch) {
         const result = await window.electronAPI.service.launch({
@@ -278,7 +300,8 @@ const UserDashboard = () => {
           url,
           username: credentials.username,
           password: credentials.password,
-          userId: user.id
+          userId: user.id,
+          showUrlBar: resolvedShowUrlBar,
         });
 
         if (result.success) {
@@ -303,6 +326,26 @@ const UserDashboard = () => {
     return () => clearInterval(id);
   }, []);
 
+  // Real-time listener for service updates (e.g. dynamic URL bar toggling)
+  useEffect(() => {
+    if (!user?.id) return;
+    
+    const channel = supabase
+      .channel('public:services')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'services' }, (payload) => {
+        const { id, show_url_bar } = payload.new;
+        if (window.electronAPI?.service?.updateUrlBar) {
+          window.electronAPI.service.updateUrlBar(id, !!show_url_bar);
+          console.log(`[ESPOT Realtime] URL bar toggled for service ${id}: ${show_url_bar}`);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
+
   if (loading || !user) {
     return <PageSkeleton mode="dashboard" />;
   }
@@ -312,7 +355,7 @@ const UserDashboard = () => {
     try {
       if (user?.id) {
         const res = await servicesService.getMyServices();
-        if (res.success) setUserServices(res.data || []);
+        if (res.success) setUserServices(filterLaunchableServices(res.data));
 
         const fpRes = await fingerprintsService.getMyProfiles();
         if (fpRes.success) {
@@ -331,7 +374,7 @@ const UserDashboard = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            Welcome back, <span className="bg-gradient-to-r from-blue-600 to-orange-600 bg-clip-text text-transparent">{userDetails?.name || user?.name || user?.username || 'User'}</span>
+            Welcome back, <span className="text-gray-900 dark:text-white">{userDetails?.name || user?.name || user?.username || 'User'}</span>
           </h1>
           <p className="text-gray-600 dark:text-gray-400">Here's an overview of your account and activity</p>
         </div>
@@ -363,7 +406,7 @@ const UserDashboard = () => {
           change="+2 this week"
           changeType="neutral"
           icon={AppWindow}
-          gradient="bg-gradient-to-br from-blue-500 to-blue-600"
+          gradient="bg-slate-600 dark:bg-slate-500"
         />
         <StatCard
           title="Active Services"
@@ -371,7 +414,7 @@ const UserDashboard = () => {
           change="Ready to use"
           changeType="positive"
           icon={Activity}
-          gradient="bg-gradient-to-br from-green-500 to-green-600"
+          gradient="bg-green-600 dark:bg-green-500"
         />
         <StatCard
           title="Fingerprint Profiles"
@@ -379,7 +422,7 @@ const UserDashboard = () => {
           change={activeProfile ? 'Active profile set' : 'No active profile'}
           changeType={activeProfile ? 'positive' : 'neutral'}
           icon={Fingerprint}
-          gradient="bg-gradient-to-br from-blue-500 to-orange-500"
+          gradient="bg-slate-600 dark:bg-slate-500"
         />
         <StatCard
           title="Account Status"
@@ -387,7 +430,7 @@ const UserDashboard = () => {
           change="Verified"
           changeType="positive"
           icon={Shield}
-          gradient="bg-gradient-to-br from-orange-500 to-orange-600"
+          gradient="bg-slate-600 dark:bg-slate-500"
         />
       </div>
 
@@ -457,7 +500,7 @@ const UserDashboard = () => {
       <GlassCard>
         <div className="p-6">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-orange-600 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-full bg-slate-600 dark:bg-slate-500 flex items-center justify-center">
               <UserIcon className="w-6 h-6 text-white" />
             </div>
             <div>
@@ -510,7 +553,7 @@ const UserDashboard = () => {
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-orange-500 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-lg bg-slate-600 dark:bg-slate-500 flex items-center justify-center">
                 <Fingerprint className="w-5 h-5 text-white" />
               </div>
               <div>
@@ -519,7 +562,7 @@ const UserDashboard = () => {
               </div>
             </div>
             {activeProfile && (
-              <Badge className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700">
+              <Badge className="bg-blue-600 text-white border-0">
                 Active: Profile {(fingerprintProfiles.findIndex(p => p.fingerprint_profile_id === activeProfileId) + 1) || '?'}
               </Badge>
             )}
@@ -535,13 +578,13 @@ const UserDashboard = () => {
                 <div
                   key={item.id}
                   className={`relative p-5 rounded-xl border-2 transition-all duration-300 ${isActive
-                    ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-orange-50 dark:from-blue-900/30 dark:to-orange-900/30 shadow-lg shadow-blue-500/20'
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md'
                     : 'border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-md'
                     }`}
                 >
                   {isActive && (
                     <div className="absolute -top-2 -right-2">
-                      <Badge className="bg-gradient-to-r from-blue-500 to-orange-600 shadow-lg">
+                      <Badge className="bg-blue-600 text-white border-0">
                         <div className="w-2 h-2 rounded-full bg-white mr-1.5 animate-pulse"></div>
                         Active
                       </Badge>
@@ -550,7 +593,7 @@ const UserDashboard = () => {
 
                   <div className="flex items-start gap-3 mb-4">
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isActive
-                      ? 'bg-gradient-to-br from-blue-500 to-orange-600'
+                      ? 'bg-blue-600 dark:bg-blue-500'
                       : 'bg-gray-200 dark:bg-gray-700'
                       }`}>
                       {profile.platform === 'Windows' ? (
@@ -573,7 +616,7 @@ const UserDashboard = () => {
                         size="sm"
                         onClick={() => handleActivateProfile(item.fingerprint_profile_id)}
                         disabled={activating}
-                        className="bg-gradient-to-r from-blue-500 to-orange-600 hover:from-blue-600 hover:to-orange-700 shadow-md w-full mt-2"
+                        className="bg-blue-600 hover:bg-blue-700 text-white w-full mt-2"
                       >
                         {activating ? "Activating..." : "Activate"}
                       </Button>
@@ -599,8 +642,8 @@ const UserDashboard = () => {
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-                <AppWindow className="w-5 h-5 text-white" />
+<div className="w-10 h-10 rounded-lg bg-slate-600 dark:bg-slate-500 flex items-center justify-center">
+              <AppWindow className="w-5 h-5 text-white" />
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">My Services</h3>
@@ -617,14 +660,14 @@ const UserDashboard = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {userServices.slice(0, 6).map((s) => {
-              const ServiceIcon = getServiceIcon(s.name, s.category);
+              const initial = (s.name || 'S').charAt(0).toUpperCase();
 
               return (
                 <GlassCard key={s.id} hover>
                   <div className="p-5">
                     <div className="flex items-start gap-3 mb-4">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-orange-600 flex items-center justify-center flex-shrink-0">
-                        <ServiceIcon className="w-6 h-6 text-white" />
+                      <div className="w-12 h-12 rounded-xl bg-slate-600 dark:bg-slate-500 flex items-center justify-center flex-shrink-0">
+                        <span className="text-xl font-semibold text-white select-none">{initial}</span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-gray-900 dark:text-white">
@@ -679,7 +722,7 @@ const UserDashboard = () => {
                     <Button
                       onClick={() => handleLaunch(s)}
                       disabled={launching === s.id}
-                      className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-md gap-2"
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2"
                     >
                       {launching === s.id ? (
                         <>

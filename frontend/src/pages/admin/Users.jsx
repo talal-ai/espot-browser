@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, RefreshCw, Cog, Trash2, Search, CheckCircle2, Monitor, LogOut } from 'lucide-react';
+import { Plus, RefreshCw, Cog, Trash2, Search, CheckCircle2, Monitor, LogOut, Globe } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '../../components/ui/alert-dialog';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { Switch } from '../../components/ui/switch';
 import DataTable from '../../components/common/DataTable';
 import { useUsers } from '../../hooks/use-users';
 import { servicesService } from '../../services/services.service';
@@ -49,6 +50,9 @@ const Users = () => {
   const [serviceStatus, setServiceStatus] = useState('all');
   const [serviceSort, setServiceSort] = useState({ key: 'name', order: 'asc' });
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [panelSearch, setPanelSearch] = useState('');
+  const [parentPanelSearch, setParentPanelSearch] = useState('');
+  const [subPanelSearch, setSubPanelSearch] = useState('');
   
   // Proxy state
   const [availableProxies, setAvailableProxies] = useState([]);
@@ -270,7 +274,7 @@ const Users = () => {
       label: 'Role',
       sortable: true,
       render: (value) => (
-        <Badge variant="outline">
+        <Badge variant="outline" className="text-xs px-2 py-0.5 font-medium">
           {value || 'user'}
         </Badge>
       )
@@ -280,7 +284,7 @@ const Users = () => {
       label: 'Status',
       sortable: true,
       render: (value) => (
-        <Badge variant={value === 'active' ? 'default' : 'secondary'}>
+        <Badge variant={value === 'active' ? 'default' : 'secondary'} className="text-xs px-2 py-0.5 font-medium">
           {value}
         </Badge>
       )
@@ -295,22 +299,20 @@ const Users = () => {
       key: 'actions',
       label: 'Actions',
       render: (_, row) => (
-        <div className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100">
-          <div className="flex gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleEdit(row);
-                setActiveTab('details');
-                setManageOpen(true);
-              }}
-              className="hover:text-blue-500"
-            >
-              Manage
-            </Button>
-          </div>
+        <div className="flex gap-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleEdit(row);
+              setActiveTab('details');
+              setManageOpen(true);
+            }}
+            className="h-7 px-2 text-xs hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+          >
+            Manage
+          </Button>
         </div>
       )
     }
@@ -364,9 +366,12 @@ const Users = () => {
                   <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
-                    type="email"
+                    type="text"
+                    inputMode="email"
+                    autoComplete="email"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="e.g. user@example.com"
                     required
                   />
                 </div>
@@ -433,7 +438,7 @@ const Users = () => {
         </div>
       </div>
 
-      <DataTable columns={columns} data={users} />
+      <DataTable columns={columns} data={users} compact />
 
       <Dialog open={manageOpen} onOpenChange={setManageOpen}>
         <DialogContent className="max-w-5xl">
@@ -443,8 +448,9 @@ const Users = () => {
           <div className="space-y-6">
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setActiveTab('details')}><Cog className="w-4 h-4 mr-2" />Details</Button>
-              <Button variant="outline" onClick={() => setActiveTab('services')}><Cog className="w-4 h-4 mr-2" />Services</Button>
+              <Button variant="outline" onClick={() => setActiveTab('services')}><Cog className="w-4 h-4 mr-2" />Panels</Button>
               <Button variant="outline" onClick={() => setActiveTab('proxies')}><Cog className="w-4 h-4 mr-2" />Proxies</Button>
+              <Button variant="outline" onClick={() => setActiveTab('browser')}><Globe className="w-4 h-4 mr-2" />Browser</Button>
               <Button variant="outline" onClick={() => setActiveTab('profiles')}><Fingerprint className="w-4 h-4 mr-2" />Profiles</Button>
               <Button variant="outline" onClick={() => setActiveTab('devices')}><Monitor className="w-4 h-4 mr-2" />Devices</Button>
               <Button variant="outline" onClick={() => setActiveTab('admin')}><Cog className="w-4 h-4 mr-2" />Admin</Button>
@@ -457,7 +463,7 @@ const Users = () => {
                 </div>
                 <div>
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} required />
+                  <Input id="email" type="text" inputMode="email" autoComplete="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="e.g. user@example.com" required />
                 </div>
                 <div>
                   <Label htmlFor="name">Full Name</Label>
@@ -501,12 +507,23 @@ const Users = () => {
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Assign New Service</Label>
+                    <Label>Assign New Panel</Label>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                       <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
-                        <SelectTrigger><SelectValue placeholder="Select a service" /></SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Select a panel" /></SelectTrigger>
                         <SelectContent>
-                          {unassignedServices.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+                          <div className="p-2 sticky top-0 bg-background z-10 border-b">
+                            <Input 
+                              placeholder="Search panels..." 
+                              value={panelSearch} 
+                              onChange={(e) => setPanelSearch(e.target.value)} 
+                              onKeyDown={(e) => e.stopPropagation()}
+                              autoFocus
+                            />
+                          </div>
+                          {unassignedServices
+                            .filter(s => s.name?.toLowerCase().includes(panelSearch.toLowerCase()))
+                            .map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
                         </SelectContent>
                       </Select>
                       <Select value={assignmentDuration} onValueChange={setAssignmentDuration}>
@@ -533,13 +550,13 @@ const Users = () => {
                               parseInt(assignmentDuration)
                             );
                             if (result.success) {
-                              toast({ title: 'Service assigned', description: selected ? `${selected.name} assigned` : 'Assigned' });
+                              toast({ title: 'Panel assigned', description: selected ? `${selected.name} assigned` : 'Assigned' });
                               const res = await servicesService.getUserServices(editingUser.id);
                               if (res.success) setAssignedServices(res.data || []);
                               setSelectedServiceId('');
                             }
                           } catch (err) {
-                            const msg = (err?.response?.data?.detail) || 'Could not assign service';
+                            const msg = (err?.response?.data?.detail) || 'Could not assign panel';
                             toast({ variant: 'destructive', title: 'Assignment failed', description: msg });
                           } finally {
                             setAssigning(false);
@@ -549,18 +566,41 @@ const Users = () => {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label>Assign Sub-service</Label>
+                    <Label>Assign Sub panel</Label>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                       <Select value={selectedParentServiceForSub} onValueChange={setSelectedParentServiceForSub}>
                         <SelectTrigger><SelectValue placeholder="Parent service" /></SelectTrigger>
-                        <SelectContent>
-                          {availableServices.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+                        <SelectContent className="max-h-80">
+                          <div className="p-2 sticky top-0 bg-background z-10 border-b">
+                            <Input 
+                              placeholder="Search parent panels..." 
+                              value={parentPanelSearch} 
+                              onChange={(e) => setParentPanelSearch(e.target.value)} 
+                              onKeyDown={(e) => e.stopPropagation()}
+                              autoFocus
+                            />
+                          </div>
+                          {availableServices
+                            .filter(s => s.name?.toLowerCase().includes(parentPanelSearch.toLowerCase()))
+                            .map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
                         </SelectContent>
                       </Select>
                       <Select value={selectedSubServiceId} onValueChange={setSelectedSubServiceId} disabled={!selectedParentServiceForSub}>
-                        <SelectTrigger><SelectValue placeholder="Sub-service" /></SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Sub panel" /></SelectTrigger>
                         <SelectContent>
-                          {(subServicesOfParent || []).filter((sub) => !(assignedSubServices || []).some((a) => a.id === sub.id)).map((sub) => (
+                          <div className="p-2 sticky top-0 bg-background z-10 border-b">
+                            <Input 
+                              placeholder="Search sub panels..." 
+                              value={subPanelSearch} 
+                              onChange={(e) => setSubPanelSearch(e.target.value)} 
+                              onKeyDown={(e) => e.stopPropagation()}
+                              autoFocus
+                            />
+                          </div>
+                          {(subServicesOfParent || [])
+                            .filter((sub) => !(assignedSubServices || []).some((a) => a.id === sub.id))
+                            .filter(sub => sub.name?.toLowerCase().includes(subPanelSearch.toLowerCase()))
+                            .map((sub) => (
                             <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
                           ))}
                         </SelectContent>
@@ -573,13 +613,13 @@ const Users = () => {
                           try {
                             const result = await servicesService.assignSubServiceToUser(selectedSubServiceId, editingUser.id, { duration_days: parseInt(assignmentDuration) });
                             if (result.success) {
-                              toast({ title: 'Sub-service assigned' });
+                              toast({ title: 'Sub panel assigned' });
                               const subRes = await servicesService.getUserSubServices(editingUser.id);
                               if (subRes.success) setAssignedSubServices(subRes.data || []);
                               setSelectedSubServiceId('');
                             }
                           } catch (err) {
-                            const msg = (err?.response?.data?.detail) || 'Could not assign sub-service';
+                            const msg = (err?.response?.data?.detail) || 'Could not assign sub panel';
                             toast({ variant: 'destructive', title: 'Assignment failed', description: msg });
                           } finally {
                             setAssigningSub(false);
@@ -697,6 +737,7 @@ const Users = () => {
                           unassignedProxies.map((p) => (
                             <SelectItem key={p.id} value={p.id}>
                               {p.host}:{p.port} ({p.country}) - {p.protocol}
+                              {p.note ? ` • Note: ${p.note}` : null}
                             </SelectItem>
                           ))
                         )}
@@ -766,6 +807,7 @@ const Users = () => {
                             </div>
                             <div className="text-sm text-gray-500">
                               {proxy.protocol} • {proxy.country} • Status: {proxy.status}
+                              {proxy.note ? ` • Note: ${proxy.note}` : null}
                             </div>
                           </div>
                           <Button
@@ -918,9 +960,12 @@ const Users = () => {
                   </p>
                 </div>
 
-                {/* Active Devices List */}
+                {/* Active Devices List - Device ID is the primary identifier; limit is enforced per device, not by IP */}
                 <div className="space-y-2">
-                  <Label>Active Devices ({devicesData.active_count})</Label>
+                  <Label>Active devices (identified by Device ID)</Label>
+                  <p className="text-xs text-gray-500">
+                    Limit is applied per device (Device ID). Count: {devicesData.active_count} of {devicesData.max_devices} devices.
+                  </p>
                   <div className="border rounded-md divide-y max-h-[300px] overflow-auto">
                     {devicesLoading ? (
                       <div className="p-4 text-sm text-gray-500 text-center">Loading devices...</div>
@@ -929,22 +974,31 @@ const Users = () => {
                     ) : (
                       devicesData.devices.map((device) => (
                         <div key={device.id} className="flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-800">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <Monitor className="w-4 h-4 text-green-500" />
-                              <span className="font-medium">{device.ip_address || 'Unknown IP'}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Monitor className="w-4 h-4 text-green-500 shrink-0" />
+                              {device.device_id && String(device.device_id).trim() ? (
+                                <span className="font-medium font-mono text-sm truncate" title={device.device_id}>
+                                  Device ID: {String(device.device_id).length > 20 ? `${String(device.device_id).slice(0, 12)}…${String(device.device_id).slice(-8)}` : device.device_id}
+                                </span>
+                              ) : (
+                                <span className="font-medium text-gray-500">Device ID: — (not reported)</span>
+                              )}
                             </div>
-                            <div className="text-sm text-gray-500">
-                              {device.user_agent ? device.user_agent.substring(0, 60) + '...' : 'Unknown browser'}
+                            <div className="text-xs text-gray-500 mt-1">
+                              {device.user_agent ? device.user_agent.substring(0, 55) + (device.user_agent.length > 55 ? '…' : '') : 'Unknown browser'}
                             </div>
-                            <div className="text-xs text-gray-400">
+                            <div className="text-xs text-gray-400 mt-0.5">
                               Logged in: {device.started_at ? new Date(device.started_at).toLocaleString() : 'Unknown'}
+                              {device.ip_address && (
+                                <span className="ml-2 text-gray-400"> · IP (reference only): {device.ip_address}</span>
+                              )}
                             </div>
                           </div>
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 shrink-0 ml-2"
                             onClick={() => handleForceLogout(device.id)}
                           >
                             <LogOut className="w-4 h-4 mr-1" />
@@ -954,6 +1008,32 @@ const Users = () => {
                       ))
                     )}
                   </div>
+                </div>
+              </div>
+            )}
+            {activeTab === 'browser' && editingUser && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between py-4 border-b border-gray-200 dark:border-gray-800">
+                  <div>
+                    <h3 className="font-medium text-gray-900 dark:text-white">Allow browser shell (new tabs)</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Let this user open new browser tabs in the dashboard</p>
+                  </div>
+                  <Switch
+                    checked={editingUser.browser_shell_enabled === true}
+                    onCheckedChange={async (checked) => {
+                      try {
+                        const result = await updateUser(editingUser.id, { browser_shell_enabled: checked });
+                        if (result?.success) {
+                          setEditingUser((prev) => (prev ? { ...prev, browser_shell_enabled: checked } : null));
+                          toast({ title: checked ? 'Browser shell enabled' : 'Browser shell disabled' });
+                        } else {
+                          toast({ variant: 'destructive', title: 'Update failed', description: result?.error?.message || 'Could not update' });
+                        }
+                      } catch (err) {
+                        toast({ variant: 'destructive', title: 'Update failed', description: err?.message || 'Server error' });
+                      }
+                    }}
+                  />
                 </div>
               </div>
             )}

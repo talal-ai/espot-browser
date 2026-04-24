@@ -7,7 +7,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_HOURS = 24
+# 7 days so users stay logged in after closing/reopening the app (native-app style)
+ACCESS_TOKEN_EXPIRE_HOURS = 24 * 7
 
 def _secret() -> str:
     """Get the JWT secret for local tokens"""

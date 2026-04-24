@@ -94,6 +94,13 @@ module.exports = {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      /* ESPOT brand gradient: bluish-purple → magenta → orange-gold (matches welcome text) */
+      backgroundImage: {
+        "gradient-espot":
+          "linear-gradient(90deg, #4f6bb8 0%, #6366f1 28%, #a855f7 52%, #d97706 82%, #e88b42 100%)",
+        "gradient-espot-hover":
+          "linear-gradient(90deg, #5f7bc8 0%, #818cf8 28%, #c084fc 52%, #ea580c 82%, #f59e0b 100%)",
+      },
       keyframes: {
         "accordion-down": {
           from: { height: "0" },

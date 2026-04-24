@@ -56,6 +56,7 @@ class UserBase(BaseModel):
     role: UserRole = UserRole.USER
     status: UserStatus = UserStatus.ACTIVE
     max_devices: Optional[int] = Field(default=1, ge=1, description="Maximum concurrent devices/sessions allowed")
+    browser_shell_enabled: bool = False
 
 class UserCreate(UserBase):
     """User creation model"""
@@ -66,10 +67,12 @@ class UserUpdate(BaseModel):
     """User update model"""
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     email: Optional[str] = Field(None, pattern=_EMAIL_PATTERN)
+    password: Optional[str] = Field(None, min_length=8)
     name: Optional[str] = Field(None, max_length=255)
     role: Optional[UserRole] = None
     status: Optional[UserStatus] = None
     max_devices: Optional[int] = Field(None, ge=1, description="Maximum concurrent devices/sessions allowed")
+    browser_shell_enabled: Optional[bool] = None
 
 class User(UserBase):
     """User model"""
@@ -91,6 +94,7 @@ class ProxyBase(BaseModel):
     password: Optional[str] = Field(None, max_length=100)
     country: str = Field(..., min_length=2, max_length=2)  # ISO country code
     status: ProxyStatus = ProxyStatus.ACTIVE
+    note: Optional[str] = Field(None, max_length=500)
     
     class Config:
         use_enum_values = True  # Use enum values in dict()
@@ -114,6 +118,7 @@ class ProxyUpdate(BaseModel):
     password: Optional[str] = Field(None, max_length=100)
     country: Optional[str] = Field(None, min_length=2, max_length=2)
     status: Optional[ProxyStatus] = None
+    note: Optional[str] = Field(None, max_length=500)
     
     def dict(self, **kwargs):
         """Override dict to normalize protocol"""
@@ -298,6 +303,7 @@ class Service(BaseModel):
     url: str
     category: Optional[str] = None
     status: str
+    show_url_bar: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -386,6 +392,7 @@ class ServiceCreateWithCredential(BaseModel):
     url: str
     category: Optional[str] = None
     status: str = "active"
+    show_url_bar: bool = False
     # Credential fields
     username: Optional[str] = None
     password: Optional[str] = None
@@ -399,6 +406,8 @@ class LaunchCredentials(BaseModel):
     service_url: str
     username: str
     password: str  # Decrypted password for autofill
+    show_url_bar: bool = False
+
 
 
 # Sub-service Models

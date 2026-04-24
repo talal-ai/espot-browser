@@ -18,6 +18,7 @@ export interface Service {
   url: string;
   category?: string;
   status: 'active' | 'inactive';
+  show_url_bar?: boolean;
   created_at?: string;
   updated_at?: string;
   assigned_at?: string;
@@ -37,6 +38,7 @@ export interface ServiceCreateData {
   url: string;
   category?: string;
   status?: string;
+  show_url_bar?: boolean;
   // Credential fields
   username?: string;
   password?: string;
@@ -49,6 +51,7 @@ export interface LaunchCredentials {
   service_url: string;
   username: string;
   password: string;
+  show_url_bar?: boolean;
 }
 
 export interface SubService {

@@ -88,3 +88,10 @@ async def add_read_receipt(message_id: str, reader_id: str) -> Dict[str, Any]:
 async def get_open_conversation_for_user(user_id: str) -> Optional[Dict[str, Any]]:
     res = supabase_service.client.table("chat_conversations").select("*").eq("created_by", user_id).eq("status", "open").order("created_at", desc=True).limit(1).execute()
     return res.data[0] if res.data else None
+
+
+async def get_conversation_created_by(conversation_id: str) -> Optional[str]:
+    """Return the user id (created_by) for a conversation, for socket routing."""
+    res = supabase_service.admin_client.table("chat_conversations").select("created_by").eq("id", conversation_id).limit(1).execute()
+    row = res.data[0] if res.data else None
+    return row.get("created_by") if row else None

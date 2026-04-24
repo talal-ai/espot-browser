@@ -168,7 +168,7 @@ export const authService = {
     },
 
     /**
-     * Get the current authenticated user
+     * Get the current authenticated user from Supabase (session only).
      */
     async getCurrentUser() {
         const { data, error } = await supabase.auth.getUser();
@@ -182,6 +182,30 @@ export const authService = {
         }
 
         return data?.user || null;
+    },
+
+    /**
+     * Get the current user from the backend (public.users).
+     * Use this for both email/password and OAuth users so id, role, browser_shell_enabled
+     * come from a single source of truth. Works with backend JWT or Supabase JWT.
+     */
+    async getBackendCurrentUser(): Promise<{ id: string; email?: string; username?: string; role: string; browser_shell_enabled?: boolean } | null> {
+        const token = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null;
+        if (!token) return null;
+        try {
+            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/me`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+            if (!response.ok) return null;
+            const data = await response.json();
+            return data && data.id ? data : null;
+        } catch {
+            return null;
+        }
     },
 
     /**

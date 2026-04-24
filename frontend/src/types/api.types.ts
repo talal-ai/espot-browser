@@ -14,6 +14,7 @@ export interface User {
   created_at: string;
   updated_at: string;
   last_login?: string | null;
+  browser_shell_enabled?: boolean;
 }
 
 export interface UserCreate {
@@ -32,6 +33,7 @@ export interface UserUpdate {
   name?: string;
   role?: 'admin' | 'user' | 'viewer';
   status?: 'active' | 'inactive' | 'suspended';
+  browser_shell_enabled?: boolean;
 }
 
 // Proxy Types
@@ -44,6 +46,7 @@ export interface Proxy {
   password?: string | null;
   country: string;
   status: 'active' | 'inactive' | 'testing' | 'failed';
+  note?: string;
   created_at: string;
   updated_at: string;
   last_checked?: string | null;
@@ -59,6 +62,7 @@ export interface ProxyCreate {
   password?: string;
   country: string;
   status?: 'active' | 'inactive' | 'testing' | 'failed';
+  note?: string;
 }
 
 export interface ProxyUpdate {
@@ -69,8 +73,10 @@ export interface ProxyUpdate {
   password?: string;
   country?: string;
   status?: 'active' | 'inactive' | 'testing' | 'failed';
+  note?: string;
 }
 
+// User-Proxy Assignment Types
 // Fingerprint Profile Types
 export interface FingerprintProfile {
   id: string;

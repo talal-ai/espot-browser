@@ -9,7 +9,7 @@ from datetime import datetime
 
 from ..services.supabase_service import supabase_service
 from ..services.encryption_service import encryption_service
-from ..models.database import LaunchCredentials
+from ..models.database import LaunchCredentials, Service
 from .auth_routes import verify_token
 
 logger = logging.getLogger(__name__)
@@ -103,7 +103,8 @@ async def get_service_launch_credentials(
                 "service_name": service.get("name"),
                 "service_url": service.get("url"),
                 "username": "",
-                "password": ""
+                "password": "",
+                "show_url_bar": service.get("show_url_bar", False),
             }
         
         # Decrypt password
@@ -128,7 +129,8 @@ async def get_service_launch_credentials(
             service_name=svc_name,
             service_url=svc_url,
             username=cred_username,
-            password=decrypted_password
+            password=decrypted_password,
+            show_url_bar=service.get("show_url_bar", False),
         )
         
     except HTTPException:

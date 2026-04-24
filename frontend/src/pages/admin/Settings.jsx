@@ -36,39 +36,7 @@ const Settings = () => {
     fetchVersion();
   }, []);
 
-  useEffect(() => {
-    if (!window.electronAPI?.updater) return;
 
-    const cleanupAvailable = window.electronAPI.updater.onUpdateAvailable((info) => {
-      toast({ 
-        title: 'Update Available', 
-        description: `Version ${info.version} is available. Downloading...`,
-        variant: 'default'
-      });
-    });
-
-    const cleanupNotAvailable = window.electronAPI.updater.onUpdateNotAvailable((info) => {
-      toast({ 
-        title: 'You are up to date', 
-        description: `Espot Browser v${info.version} is the latest version available.`, 
-        variant: 'default'
-      });
-    });
-
-    const cleanupError = window.electronAPI.updater.onError((error) => {
-      toast({ 
-        title: 'Update Error', 
-        description: typeof error === 'string' ? error : 'Failed to check for updates', 
-        variant: 'destructive'
-      });
-    });
-
-    return () => {
-      if (typeof cleanupAvailable === 'function') cleanupAvailable();
-      if (typeof cleanupNotAvailable === 'function') cleanupNotAvailable();
-      if (typeof cleanupError === 'function') cleanupError();
-    };
-  }, [toast]);
 
   const handleSaveBranding = (e) => {
     e.preventDefault();
@@ -184,7 +152,7 @@ const Settings = () => {
                 <div className="flex items-center justify-between py-4 border-b border-gray-200 dark:border-gray-800">
                   <div>
                     <h3 className="font-medium text-gray-900 dark:text-white">Automatic Login</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Auto-fill credentials for assigned services</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Auto-fill credentials for assigned panels</p>
                   </div>
                   <Switch checked={autoLogin} onCheckedChange={setAutoLogin} />
                 </div>
@@ -207,6 +175,7 @@ const Settings = () => {
                       console.log('Checking for updates clicked...');
                       if (window.electronAPI?.updater?.checkForUpdates) {
                         try {
+                          sessionStorage.setItem('manualUpdateCheck', 'true');
                           window.electronAPI.updater.checkForUpdates();
                           toast({ title: 'Checking for updates...', description: 'Please wait while we check for the latest version.' });
                         } catch (err) {

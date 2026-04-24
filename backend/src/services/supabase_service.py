@@ -197,6 +197,12 @@ class SupabaseService:
         """Update user"""
         try:
             update_data = user_data.dict(exclude_unset=True)
+            
+            if "password" in update_data:
+                from passlib.context import CryptContext
+                pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+                update_data["password_hash"] = pwd_context.hash(update_data.pop("password"))
+                
             update_data["updated_at"] = datetime.utcnow().isoformat()
             
             response = self.admin_client.table("users").update(update_data).eq("id", user_id).execute()
@@ -611,7 +617,18 @@ class SupabaseService:
     
     async def get_session(self, session_id: str) -> Optional[Session]:
         """Get session by ID"""
-        # ... (keep existing get_session)
+        try:
+            response = self.client.table("user_sessions").select("*, user:users(username,email)").eq("id", session_id).single().execute()
+            if response.data:
+                row = response.data
+                if isinstance(row, dict) and row.get("user"):
+                    row["username"] = row["user"].get("username")
+                    row.pop("user", None)
+                return Session(**row)
+            return None
+        except Exception as e:
+            logger.error(f"Error getting session {session_id}: {e}")
+            return None
 
     async def get_sessions(self, skip: int = 0, limit: int = 100, user_id: Optional[str] = None) -> List[Session]:
         """Get all sessions with optional user filter"""
@@ -715,7 +732,7 @@ class SupabaseService:
 
     # Device Limit Helper Methods
     async def count_user_active_sessions(self, user_id: str) -> int:
-        """Count active sessions for a user (for device limit enforcement)"""
+        """Count active sessions for a user (raw session count, e.g. for display)"""
         try:
             response = self.admin_client.table("user_sessions")\
                 .select("id", count="exact")\
@@ -727,11 +744,72 @@ class SupabaseService:
             logger.error(f"Error counting active sessions for user {user_id}: {e}")
             return 0
 
+    async def count_user_active_devices(self, user_id: str) -> int:
+        """Count distinct active devices for a user (for device limit enforcement).
+        Device key = device_id if present and non-empty, else ip_address, else session id."""
+        try:
+            response = self.admin_client.table("user_sessions")\
+                .select("id, device_id, ip_address")\
+                .eq("user_id", user_id)\
+                .eq("is_active", True)\
+                .execute()
+            rows = response.data or []
+            keys = set()
+            for row in rows:
+                did = row.get("device_id") if isinstance(row.get("device_id"), str) else None
+                if did and did.strip():
+                    keys.add(("device_id", did))
+                else:
+                    ip = row.get("ip_address")
+                    if ip is not None and str(ip).strip():
+                        keys.add(("ip", str(ip)))
+                    else:
+                        keys.add(("id", str(row.get("id", ""))))
+            return len(keys)
+        except Exception as e:
+            logger.error(f"Error counting active devices for user {user_id}: {e}")
+            return 0
+
+    async def user_has_active_session_for_device(self, user_id: str, device_id: Optional[str]) -> bool:
+        """Return True if user has at least one active session with the given device_id."""
+        if not device_id or not str(device_id).strip():
+            return False
+        try:
+            response = self.admin_client.table("user_sessions")\
+                .select("id", count="exact")\
+                .eq("user_id", user_id)\
+                .eq("is_active", True)\
+                .eq("device_id", device_id)\
+                .limit(1)\
+                .execute()
+            return (response.count or 0) > 0
+        except Exception as e:
+            logger.error(f"Error checking session for device {device_id}: {e}")
+            return False
+
+    async def deactivate_sessions_for_user_device(self, user_id: str, device_id: Optional[str]) -> None:
+        """Deactivate all active sessions for this user and device_id (reclaim slot for same-device re-login)."""
+        if not device_id or not str(device_id).strip():
+            return
+        try:
+            self.admin_client.table("user_sessions")\
+                .update({
+                    "is_active": False,
+                    "ended_at": datetime.utcnow().isoformat()
+                })\
+                .eq("user_id", user_id)\
+                .eq("device_id", device_id)\
+                .eq("is_active", True)\
+                .execute()
+        except Exception as e:
+            logger.error(f"Error deactivating sessions for user {user_id} device {device_id}: {e}")
+            raise
+
     async def get_user_active_sessions(self, user_id: str) -> List[dict]:
         """Get all active sessions for a user with device details"""
         try:
             response = self.admin_client.table("user_sessions")\
-                .select("id, ip_address, user_agent, started_at, is_active")\
+                .select("id, ip_address, user_agent, started_at, is_active, device_id, device_info")\
                 .eq("user_id", user_id)\
                 .eq("is_active", True)\
                 .order("started_at", desc=True)\
@@ -1150,27 +1228,31 @@ class SupabaseService:
                 for log in (logs_response.data or []):
                     username = "Unknown"
                     if log.get("user") and isinstance(log["user"], dict):
-                         username = log["user"].get("username", "Unknown")
-                    
-                    # Determine type/color from action
-                    action = log.get("action", "").lower()
+                        username = log["user"].get("username") or "Unknown"
+                    else:
+                        # Deleted users or logs without join: use stored old_values/new_values
+                        ov, nv = log.get("old_values") or {}, log.get("new_values") or {}
+                        username = nv.get("username") or ov.get("username") or username
+                    action_str = log.get("action", "") or ""
+                    resource_type = log.get("resource_type", "") or ""
+                    display_action = f"{action_str} {resource_type}".strip() or action_str
+                    action = action_str.lower()
                     act_type = "service"
                     if "login" in action: act_type = "login"
                     elif "logout" in action: act_type = "logout"
                     elif "proxy" in action: act_type = "proxy"
-                    
-                    # Calculate time ago roughly
+                    elif "user_created" in action or "user_deleted" in action: act_type = "user"
+                    elif "service_assigned" in action or "service_unassigned" in action: act_type = "service"
                     try:
-                        created_at = datetime.fromisoformat(log["created_at"].replace('Z', '+00:00'))
-                        time_str = created_at.strftime("%H:%M") 
-                    except:
+                        created_at = datetime.fromisoformat(log["created_at"].replace("Z", "+00:00"))
+                        time_str = created_at.strftime("%H:%M")
+                    except Exception:
                         time_str = "Now"
-
                     recent_activity.append(ActivityItem(
                         user=username,
-                        action=f"{log.get('action', '')} {log.get('resource_type', '')}",
+                        action=display_action,
                         time=time_str,
-                        type=act_type
+                        type=act_type,
                     ))
             except Exception as log_e:
                 logger.error(f"Error processing recent activity: {log_e}")
@@ -1614,7 +1696,7 @@ class SupabaseService:
         if self.is_dev_mode:
             return await dev_service.get_sub_service(sub_service_id)
         try:
-            response = self.client.table("sub_services").select("*, services(id, name, url, status)").eq("id", sub_service_id).limit(1).execute()
+            response = self.client.table("sub_services").select("*, services(id, name, url, status, show_url_bar)").eq("id", sub_service_id).limit(1).execute()
             if response.data:
                 row = response.data[0]
                 svc = row.pop("services", None)
@@ -1622,6 +1704,7 @@ class SupabaseService:
                     row["service_url"] = svc.get("url")
                     row["service_name"] = svc.get("name")
                     row["service_status"] = svc.get("status")
+                    row["show_url_bar"] = bool(svc.get("show_url_bar", False))
                 return row
             return None
         except Exception as e:
@@ -1661,7 +1744,7 @@ class SupabaseService:
             return await dev_service.get_user_sub_services(user_id)
         try:
             response = self.client.table("user_sub_services").select(
-                "created_at, expires_at, sub_services(id, name, username, service_id, visibility, services(id, name, url, status))"
+                "created_at, expires_at, sub_services(id, name, username, service_id, visibility, services(id, name, url, status, show_url_bar))"
             ).eq("user_id", user_id).execute()
             results = []
             for row in (response.data or []):
@@ -1671,6 +1754,7 @@ class SupabaseService:
                 svc = sub.pop("services", None) if isinstance(sub, dict) else None
                 url = svc.get("url") if svc else ""
                 status = svc.get("status", "active") if svc else "active"
+                show_url_bar = bool(svc.get("show_url_bar", False)) if svc else False
                 results.append({
                     "id": sub["id"],
                     "name": sub["name"],
@@ -1681,6 +1765,7 @@ class SupabaseService:
                     "assigned_at": row.get("created_at"),
                     "expires_at": row.get("expires_at"),
                     "assignment_source": "direct",
+                    "show_url_bar": show_url_bar,
                 })
             return results
         except Exception as e:
@@ -1744,11 +1829,12 @@ class SupabaseService:
             if not sub or not sub.get("service_url"):
                 return None
             encrypted = sub.get("password_encrypted") or sub.get("password")
+            show_url_bar = bool(sub.get("show_url_bar", False))
             if not encrypted:
-                return {"service_id": sub_service_id, "service_name": sub["name"], "service_url": sub["service_url"], "username": sub.get("username", ""), "password": ""}
+                return {"service_id": sub_service_id, "service_name": sub["name"], "service_url": sub["service_url"], "username": sub.get("username", ""), "password": "", "show_url_bar": show_url_bar}
             from src.services.encryption_service import encryption_service
             decrypted = encryption_service.decrypt_password(encrypted)
-            return {"service_id": sub_service_id, "service_name": sub["name"], "service_url": sub["service_url"], "username": sub.get("username", ""), "password": decrypted}
+            return {"service_id": sub_service_id, "service_name": sub["name"], "service_url": sub["service_url"], "username": sub.get("username", ""), "password": decrypted, "show_url_bar": show_url_bar}
         except Exception as e:
             logger.error(f"Error getting sub-service launch credentials: {e}")
             raise

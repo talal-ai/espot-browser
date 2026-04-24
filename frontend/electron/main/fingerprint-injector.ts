@@ -627,3 +627,33 @@ export async function createSpoofedWindow(
   return window;
 }
 
+/**
+ * Apply fingerprint spoofing to an Electron session partition.
+ * All renderers that use this partition (including <webview> tags) will receive
+ * the spoofing preload before any page code runs.
+ * Returns the temp preload file path so the caller can clean it up on window close.
+ */
+export async function applySpoofingToPartition(
+  profile: FingerprintProfile,
+  partitionName: string
+): Promise<string> {
+  const fs   = require('fs');
+  const path = require('path');
+  const os   = require('os');
+
+  const spoofingScript    = generateSpoofingScript(profile);
+  const tempPreloadPath   = path.join(
+    os.tmpdir(),
+    `espot-session-spoof-${profile.id}-${Date.now()}.js`
+  );
+
+  fs.writeFileSync(tempPreloadPath, spoofingScript);
+
+  const ses = session.fromPartition(partitionName);
+  ses.setPreloads([tempPreloadPath]);
+  ses.setUserAgent(profile.user_agent);
+
+  console.log(`[ESPOT] ✅ Session spoofing applied to partition "${partitionName}"`);
+  return tempPreloadPath;
+}
+

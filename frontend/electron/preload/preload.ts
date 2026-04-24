@@ -68,8 +68,10 @@ const api = {
 
   // Service Launch API (for autofill)
   service: {
-    launch: (launchData: { serviceId: string; url: string; username: string; password: string }) =>
+    launch: (launchData: { serviceId: string; url: string; username: string; password: string; userId?: string; showUrlBar?: boolean }) =>
       ipcRenderer.invoke('service:launch', launchData),
+    updateUrlBar: (serviceId: string, showUrlBar: boolean) =>
+      ipcRenderer.invoke('service:updateUrlBar', serviceId, showUrlBar),
   },
 
   // Auto-Update API
@@ -176,8 +178,9 @@ export interface ElectronAPI {
   };
 
   service: {
-    launch: (launchData: { serviceId: string; url: string; username: string; password: string }) =>
+    launch: (launchData: { serviceId: string; url: string; username: string; password: string; userId?: string; showUrlBar?: boolean }) =>
       Promise<{ success: boolean; message?: string; error?: string }>;
+    updateUrlBar: (serviceId: string, showUrlBar: boolean) => Promise<{ success: boolean }>;
   };
 
   updater: {

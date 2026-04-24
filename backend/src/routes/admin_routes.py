@@ -19,7 +19,8 @@ from src.models.database import (
     ServiceCreateWithCredential, CredentialUpdate, LaunchCredentials,
     SubServiceCreate, SubServiceUpdate, AssignSubServiceRequest,
     DashboardCharts,
-    Group, GroupCreate, GroupUpdate
+    Group, GroupCreate, GroupUpdate,
+    AuditLogCreate,
 )
 
 # Request models
@@ -44,10 +45,35 @@ async def get_current_admin():
 async def create_user(user_data: UserCreate, admin=Depends(get_current_admin)):
     """Create a new user (admin-created user with password)"""
     try:
+        # Explicitly check for duplicate email/username
+        existing = supabase_service.client.table("users").select("email,username").or_(
+            f"email.eq.{user_data.email},username.eq.{user_data.username}"
+        ).execute()
+        
+        if existing.data:
+            for u in existing.data:
+                if u.get("email") == user_data.email:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this email already exists")
+                if u.get("username") == user_data.username:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this username already exists")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this email or username already exists")
+
         password_hash = hash_password(user_data.password)
         user = await supabase_service.create_user_with_password(user_data, password_hash)
         logger.info(f"User created by admin: {user.id}")
+        try:
+            await supabase_service.create_audit_log(AuditLogCreate(
+                user_id=user.id,
+                action="user_created",
+                resource_type="user",
+                resource_id=user.id,
+                new_values={"username": getattr(user, "username", None) or user_data.username},
+            ))
+        except Exception:
+            pass
         return user
+    except HTTPException:
+        raise
     except Exception as e:
         msg = str(e)
         if "duplicate" in msg.lower() or "unique" in msg.lower():
@@ -127,6 +153,15 @@ async def assign_service_to_user(
             expires_at=expires_at
         )
         logger.info(f"Successfully assigned service to user")
+        try:
+            await supabase_service.create_audit_log(AuditLogCreate(
+                user_id=user_id,
+                action="service_assigned",
+                resource_type="service",
+                resource_id=service_id,
+            ))
+        except Exception:
+            pass
         return assigned
     except Exception as e:
         logger.error(f"Error assigning service to user: {e}", exc_info=True)
@@ -141,6 +176,15 @@ async def unassign_service_from_user(user_id: str, service_id: str, admin=Depend
         success = await supabase_service.unassign_service_from_user(service_id, user_id)
         if not success:
             raise HTTPException(status_code=404, detail="Service relationship not found")
+        try:
+            await supabase_service.create_audit_log(AuditLogCreate(
+                user_id=user_id,
+                action="service_unassigned",
+                resource_type="service",
+                resource_id=service_id,
+            ))
+        except Exception:
+            pass
         return {"success": True}
     except HTTPException:
         raise
@@ -245,7 +289,8 @@ async def create_service(service: ServiceCreateWithCredential, admin=Depends(get
             "name": service.name,
             "url": service.url,
             "category": service.category,
-            "status": service.status or "active"
+            "status": service.status or "active",
+            "show_url_bar": service.show_url_bar,
         }
         created = await supabase_service.create_service(service_data)
         
@@ -293,7 +338,8 @@ async def update_service(service_id: str, service_update: ServiceCreateWithCrede
             "name": service_update.name,
             "url": service_update.url,
             "category": service_update.category,
-            "status": service_update.status or "active"
+            "status": service_update.status or "active",
+            "show_url_bar": service_update.show_url_bar,
         }
         updated = await supabase_service.update_service(service_id, service_data)
         if not updated:
@@ -621,16 +667,37 @@ async def update_user(user_id: str, user_data: UserUpdate, admin=Depends(get_cur
         raise
     except Exception as e:
         logger.error(f"Error updating user {user_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update user")
+        msg = str(e)
+        if "duplicate" in msg.lower() or "unique" in msg.lower():
+            raise HTTPException(status_code=409, detail="User already exists (duplicate email or username)")
+        raise HTTPException(status_code=500, detail=f"Failed to update user: {msg}")
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(user_id: str, admin=Depends(get_current_admin)):
     """Delete user"""
     try:
+        # Get username before delete for audit log (user row may be removed)
+        username = None
+        try:
+            u = await supabase_service.get_user(user_id)
+            if u:
+                username = u.get("username") if isinstance(u, dict) else getattr(u, "username", None)
+        except Exception:
+            pass
         success = await supabase_service.delete_user(user_id)
         if not success:
             raise HTTPException(status_code=404, detail="User not found")
         logger.info(f"User deleted: {user_id}")
+        try:
+            await supabase_service.create_audit_log(AuditLogCreate(
+                user_id=user_id,
+                action="user_deleted",
+                resource_type="user",
+                resource_id=user_id,
+                old_values={"username": username},
+            ))
+        except Exception:
+            pass
     except HTTPException:
         raise
     except Exception as e:
@@ -789,6 +856,15 @@ async def assign_proxy_to_user(
             proxy_id, user_id, assigned_by=admin_uuid, is_default=is_default
         )
         logger.info(f"Successfully assigned proxy {proxy_id} to user {user_id}")
+        try:
+            await supabase_service.create_audit_log(AuditLogCreate(
+                user_id=user_id,
+                action="proxy_assigned",
+                resource_type="proxy",
+                resource_id=proxy_id,
+            ))
+        except Exception:
+            pass
         return assigned
     except Exception as e:
         logger.error(f"Error assigning proxy to user: {e}", exc_info=True)
@@ -805,6 +881,15 @@ async def unassign_proxy_from_user(user_id: str, proxy_id: str, admin=Depends(ge
         if not success:
             raise HTTPException(status_code=404, detail="Proxy assignment not found")
         logger.info(f"Proxy {proxy_id} unassigned from user {user_id}")
+        try:
+            await supabase_service.create_audit_log(AuditLogCreate(
+                user_id=user_id,
+                action="proxy_unassigned",
+                resource_type="proxy",
+                resource_id=proxy_id,
+            ))
+        except Exception:
+            pass
         return {"success": True}
     except HTTPException:
         raise

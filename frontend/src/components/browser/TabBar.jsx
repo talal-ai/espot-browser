@@ -62,7 +62,7 @@ const Tab = ({ tab, isActive, onClick, onClose }) => {
     );
 };
 
-const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onNewTab }) => {
+const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onNewTab, allowNewTab = true }) => {
     // We can remove the scroll logic since we are shrinking tabs now.
     // However, if there are WAY too many tabs, we might eventually need scroll.
     // For now, "condensing" means flex-shrink behavior.
@@ -81,14 +81,16 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onNewTab }) => {
                     />
                 ))}
 
-                {/* New Tab Button - Immediately after tabs */}
-                <button
-                    onClick={onNewTab}
-                    className="shrink-0 flex items-center justify-center w-8 h-8 mb-1 ml-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-all text-gray-500 hover:text-gray-900 dark:hover:text-gray-100"
-                    title="New Tab"
-                >
-                    <Plus className="w-4 h-4" />
-                </button>
+                {/* New Tab Button - only when allowed (e.g. admin or user has browser_shell_enabled) */}
+                {allowNewTab && (
+                    <button
+                        onClick={onNewTab}
+                        className="shrink-0 flex items-center justify-center w-8 h-8 mb-1 ml-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-all text-gray-500 hover:text-gray-900 dark:hover:text-gray-100"
+                        title="New Tab"
+                    >
+                        <Plus className="w-4 h-4" />
+                    </button>
+                )}
             </div>
 
             {/* Window Drag Region */}

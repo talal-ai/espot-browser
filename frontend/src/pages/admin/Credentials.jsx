@@ -132,7 +132,7 @@ const Credentials = () => {
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Credentials Management</h1>
           <p className="text-gray-600 dark:text-gray-400">
-            View service credentials. Credentials are created through the Services page.
+            View panel credentials. Credentials are created through the Panels page.
           </p>
         </div>
         <Button 
