@@ -17,7 +17,7 @@ const playNotificationSound = () => {
     audio.volume = 0.5
     audio.play().catch(() => {}) // Ignore autoplay errors
   } catch (e) {
-    console.warn('Could not play notification sound')
+    // silently ignore
   }
 }
 
@@ -327,7 +327,6 @@ export default function ChatWindow({ open, onClose, conversationId: initialConve
         nonce
       }
     } catch (error) {
-      console.error('Image upload failed:', error)
       alert('Failed to upload image. Please try again.')
       return null
     } finally {
@@ -497,7 +496,6 @@ function MessageItem({ msg, keyB64, meId }) {
       const url = URL.createObjectURL(blob)
       setImageUrl(url)
     } catch (error) {
-      console.error('Failed to load image:', error)
       setImageError(true)
     } finally {
       setImageLoading(false)

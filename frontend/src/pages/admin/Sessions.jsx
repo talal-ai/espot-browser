@@ -68,7 +68,6 @@ const Sessions = () => {
       await sessionsService.deleteAllSessions();
       refresh();
     } catch (e) {
-      console.error('Failed to delete all sessions:', e);
     }
   };
 

@@ -33,7 +33,6 @@ export const useData = (storageKey) => {
           const newData = JSON.parse(e.newValue);
           setData(newData);
         } catch (err) {
-          console.error('Error parsing storage data:', err);
         }
       }
     };

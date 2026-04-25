@@ -48,7 +48,6 @@ const UpdateNotification = () => {
 
     listeners.push(window.electron.updater.onError((err) => {
       setStatus('error');
-      console.error('Updater error:', err);
     }));
 
     return () => {

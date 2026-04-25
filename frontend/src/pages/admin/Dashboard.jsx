@@ -84,7 +84,7 @@ const Dashboard = () => {
           adminStatsLoadedOnce = true; // only after we have something to cache
         }
       } catch (error) {
-        console.error('Failed to load stats:', error);
+        // silently ignore
       } finally {
         setStatsLoading(false);
       }
@@ -130,7 +130,7 @@ const Dashboard = () => {
         setChartsData(chartsResponse.data);
       }
     } catch (error) {
-      console.error('Failed to refresh stats:', error);
+      // silently ignore
     } finally {
       setStatsLoading(false);
     }

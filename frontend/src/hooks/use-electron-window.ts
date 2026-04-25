@@ -34,7 +34,6 @@ export function useElectronWindow() {
     const userId = user?.id;
     
     if (!userId) {
-      console.error('Cannot create user window: no user ID');
       return { success: false, error: 'Not authenticated' };
     }
 

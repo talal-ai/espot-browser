@@ -284,14 +284,12 @@ export function useProxies(): UseProxiesReturn {
             const electronResult = await window.electronAPI.proxy.activate(proxyConfig);
             
             if (!electronResult.success) {
-              console.error('Failed to activate Electron proxy:', electronResult.error);
               toast({
                 variant: 'destructive',
                 title: 'Partial Activation',
                 description: 'Backend proxy activated but browser proxy failed. Users may not be proxied.',
               });
             } else {
-              console.log('✅ Electron proxy activated successfully');
             }
           }
 
@@ -341,14 +339,12 @@ export function useProxies(): UseProxiesReturn {
             const electronResult = await window.electronAPI.proxy.deactivate();
             
             if (!electronResult.success) {
-              console.error('Failed to deactivate Electron proxy:', electronResult.error);
               toast({
                 variant: 'destructive',
                 title: 'Partial Deactivation',
                 description: 'Backend proxy deactivated but browser proxy failed.',
               });
             } else {
-              console.log('✅ Electron proxy deactivated successfully');
             }
           }
 

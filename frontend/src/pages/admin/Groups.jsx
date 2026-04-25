@@ -78,7 +78,6 @@ const Groups = () => {
           setActiveTab({ type: 'group', id: fetchedGroups[0].id });
         }
       } catch (error) {
-        console.error("Error fetching data:", error);
         toast({
           title: "Error",
           description: "Failed to load data",
@@ -112,7 +111,6 @@ const Groups = () => {
           setUsers(response.data);
         }
       } catch (error) {
-        console.error("Error fetching users:", error);
       } finally {
         setLoadingUsers(false);
       }
@@ -226,7 +224,6 @@ const Groups = () => {
         setAllUsers(response.data.filter(u => !existingUserIds.includes(u.id)));
       }
     } catch (error) {
-      console.error("Error fetching users:", error);
     }
     setUserSearchQuery('');
     setShowAddUserDialog(true);

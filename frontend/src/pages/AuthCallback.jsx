@@ -20,8 +20,6 @@ const AuthCallback = () => {
     useEffect(() => {
         const handleAuthCallback = async () => {
             try {
-                console.log('[AuthCallback] Processing OAuth callback...');
-                console.log('[AuthCallback] Current URL:', window.location.href);
 
                 // Check if there's an error in the URL (from OAuth provider)
                 const urlParams = new URLSearchParams(window.location.search);
@@ -31,7 +29,6 @@ const AuthCallback = () => {
                 const errorDescription = urlParams.get('error_description') || hashParams.get('error_description');
 
                 if (urlError) {
-                    console.error('[AuthCallback] OAuth error from provider:', urlError, errorDescription);
                     setError(errorDescription || urlError);
                     setTimeout(() => navigate('/auth', { replace: true }), 3000);
                     return;
@@ -44,7 +41,6 @@ const AuthCallback = () => {
                 const { data, error: sessionError } = await supabase.auth.getSession();
 
                 if (sessionError) {
-                    console.error('[AuthCallback] Session error:', sessionError);
                     setError(sessionError.message);
                     setTimeout(() => navigate('/auth', { replace: true }), 3000);
                     return;
@@ -52,9 +48,6 @@ const AuthCallback = () => {
 
                 if (data.session) {
                     const user = data.session.user;
-                    console.log('[AuthCallback] ✅ Session established for:', user.email);
-                    console.log('[AuthCallback] Provider:', user.app_metadata?.provider);
-                    console.log('[AuthCallback] User metadata:', user.user_metadata);
 
                     // Check if running in popup mode
                     if (urlParams.get('popup') === 'true' || hashParams.get('popup') === 'true') {
@@ -73,23 +66,19 @@ const AuthCallback = () => {
                     // Redirect to home - ProtectedRoute and RoleHome will handle role-based routing
                     navigate('/', { replace: true });
                 } else {
-                    console.log('[AuthCallback] No session found, checking for tokens in URL...');
 
                     // Try to exchange code for session (for PKCE flow)
                     const code = urlParams.get('code');
                     if (code) {
-                        console.log('[AuthCallback] Found auth code, exchanging for session...');
                         const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
                         if (exchangeError) {
-                            console.error('[AuthCallback] Code exchange error:', exchangeError);
                             setError(exchangeError.message);
                             setTimeout(() => navigate('/auth', { replace: true }), 3000);
                             return;
                         }
 
                         if (exchangeData.session) {
-                            console.log('[AuthCallback] ✅ Session established via code exchange');
                             
                             // Check if running in popup mode
                             if (urlParams.get('popup') === 'true' || hashParams.get('popup') === 'true') {
@@ -108,7 +97,6 @@ const AuthCallback = () => {
                     }
 
                     // No session and no code - redirect to auth
-                    console.log('[AuthCallback] No valid session or code, redirecting to login');
                     if (urlParams.get('popup') === 'true' || hashParams.get('popup') === 'true') {
                          setStatus('Login failed or cancelled. You can close this window.');
                          return; 
@@ -121,7 +109,6 @@ const AuthCallback = () => {
                 //  I'll just handle the session part below in a separate edit or use multi_replace if I could.
                 //  Actually, I will cancel this and use multi_replace to handle both blocks correctly).
             } catch (err) {
-                console.error('[AuthCallback] Unexpected error:', err);
                 setError(err instanceof Error ? err.message : 'An unexpected error occurred');
                 setTimeout(() => navigate('/auth', { replace: true }), 3000);
             }

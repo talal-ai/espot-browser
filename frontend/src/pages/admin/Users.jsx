@@ -208,7 +208,6 @@ const Users = () => {
             setDevicesData({ max_devices: editingUser.max_devices || 1, active_count: 0, devices: [] });
           }
         } catch (error) {
-          console.error('Error fetching devices:', error);
           setDevicesData({ max_devices: editingUser.max_devices || 1, active_count: 0, devices: [] });
         } finally {
           setDevicesLoading(false);
@@ -229,7 +228,6 @@ const Users = () => {
           if (assignedRes.success) setAssignedProfiles(assignedRes.data || []);
           if (allRes.success) setAvailableProfiles(allRes.data || []);
         } catch (e) {
-          console.error(e);
           toast({ variant: 'destructive', title: 'Error', description: 'Failed to load profiles' });
         } finally {
           setProfilesLoading(false);
@@ -251,7 +249,7 @@ const Users = () => {
         }
       }
     } catch (err) {
-      console.error('Force logout error:', err);
+      // silently ignore
     }
   };
 
@@ -777,7 +775,6 @@ const Users = () => {
                             setSetAsDefault(false);
                           }
                         } catch (err) {
-                          console.error('Assign error', err);
                           const msg = (err?.response?.data?.detail) || 'Could not assign proxy';
                           toast({ variant: 'destructive', title: 'Assignment failed', description: msg });
                         } finally {
@@ -824,7 +821,6 @@ const Users = () => {
                                   toast({ variant: 'destructive', title: 'Failed to unassign proxy' });
                                 }
                               } catch (err) {
-                                console.error('Unassign error:', err);
                                 toast({ variant: 'destructive', title: 'Error', description: 'Could not unassign proxy' });
                               }
                             }}
@@ -875,7 +871,7 @@ const Users = () => {
                           } else {
                              toast({ variant: 'destructive', title: 'Failed', description: res.error });
                           }
-                        } catch(e) { console.error(e); }
+                        } catch(e) { }
                         finally { setProfileAssigning(false); }
                       }}
                     >

@@ -87,7 +87,6 @@ function generateAutofillScript(username, password, url) {
             const txt = (btn.textContent || btn.value || btn.innerText || '').toLowerCase().trim();
             for (const t of texts) { 
                 if (txt === t || txt.includes(t)) {
-                    console.log('[ESPOT] Found button by text:', txt);
                     return btn; 
                 }
             }
@@ -103,7 +102,6 @@ function generateAutofillScript(username, password, url) {
         if (!btn) btn = findButtonByText(['login', 'log in', 'submit', 'continue', 'next']);
         
         if (btn) {
-            console.log('[ESPOT] Found submit button:', btn.tagName, btn.textContent || btn.value);
             btn.scrollIntoView({ behavior: 'instant', block: 'center' });
             btn.focus();
             btn.click();
@@ -113,10 +111,8 @@ function generateAutofillScript(username, password, url) {
             const form = btn.closest('form');
             if (form) form.dispatchEvent(new Event('submit', { bubbles: true }));
             submitClicked = true;
-            console.log('[ESPOT] ✅ Clicked submit button');
             return true;
         }
-        console.log('[ESPOT] ❌ Submit button not found');
         return false;
     }
     
@@ -129,10 +125,10 @@ function generateAutofillScript(username, password, url) {
         const passField = findByLabel('password') || findField(passwordSelectors);
         
         let uf = false, pf = false;
-        if (userField && !userField.value) { fillField(userField, USERNAME); uf = true; console.log('[ESPOT] Username filled'); }
+        if (userField && !userField.value) { fillField(userField, USERNAME); uf = true; }
         else if (userField) uf = true;
         
-        if (passField && !passField.value) { fillField(passField, PASSWORD); pf = true; console.log('[ESPOT] Password filled'); }
+        if (passField && !passField.value) { fillField(passField, PASSWORD); pf = true; }
         else if (passField) pf = true;
         else { sessionStorage.setItem('ESPOT_PASS', PASSWORD); }
         
@@ -168,7 +164,6 @@ function generateAutofillScript(username, password, url) {
     if (!r.pass) watchPass();
     setTimeout(autofill, 1500);
     setTimeout(autofill, 3000);
-    console.log('[ESPOT] Autofill initialized');
 })();
 `;
 }
@@ -194,28 +189,22 @@ const WebView = forwardRef(({ url, isActive, partition, userId, userAgent, crede
                 // Get auth token from localStorage
                 const authToken = localStorage.getItem('auth_token');
                 if (!authToken) {
-                    console.warn('[WebView] No auth token found, skipping cookie injection');
                     return;
                 }
 
-                console.log('[WebView] 🍪 Injecting Google cookies for user:', userId);
 
                 // Call Electron IPC to inject cookies
                 if (window.electron?.browser?.launch) {
                     // Use browser.launch which handles cookie injection
-                    console.log('[WebView] Cookie injection via browser.launch not needed for webview');
                 } else if (window.electronAPI?.invoke) {
                     // Direct IPC call
                     const result = await window.electronAPI.invoke('google:injectCookies', userId, sessionPartition);
                     if (result.success) {
-                        console.log('[WebView] ✅ Cookies injected successfully');
                         setCookiesInjected(true);
                     } else {
-                        console.warn('[WebView] ⚠️ Cookie injection failed:', result.error);
                     }
                 }
             } catch (error) {
-                console.error('[WebView] Error injecting cookies:', error);
             }
         };
 
@@ -312,7 +301,6 @@ const WebView = forwardRef(({ url, isActive, partition, userId, userAgent, crede
                 onUrlChange(e.url);
                 updateHistoryState();
             } else {
-                console.log('[WebView] Ignoring navigation to:', e.url);
             }
         };
 
@@ -326,7 +314,6 @@ const WebView = forwardRef(({ url, isActive, partition, userId, userAgent, crede
 
         // Handle new windows (popups) - e.g. preventing them or opening in new tab
         const handleNewWindow = (e) => {
-            console.log('[WebView] New window requested:', e.url);
             // Verify if it's a valid navigation or a popup we want to block/handle
             if (e.url.includes('contacts.google.com/widget')) {
                 e.preventDefault(); // Block widget popups if they try to open separately
@@ -419,7 +406,6 @@ const WebView = forwardRef(({ url, isActive, partition, userId, userAgent, crede
         });
     } catch(e) {}
     
-    console.log('[WebView Stealth] Applied');
 })();
 `;
 
@@ -437,7 +423,6 @@ const WebView = forwardRef(({ url, isActive, partition, userId, userAgent, crede
             if (credentials && credentials.username && credentials.password) {
                 const autofillScript = generateAutofillScript(credentials.username, credentials.password, url);
                 webview.executeJavaScript(autofillScript).catch((e) => {
-                    console.error('Autofill injection failed:', e);
                 });
             }
         };
@@ -471,7 +456,6 @@ const WebView = forwardRef(({ url, isActive, partition, userId, userAgent, crede
 
     // Log partition usage only on mount or change
     useEffect(() => {
-        console.log('[WebView] Active partition:', sessionPartition || 'DEFAULT (Shared)');
     }, [sessionPartition]);
 
     return (

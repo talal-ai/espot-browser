@@ -7,6 +7,24 @@ import axios, { AxiosInstance, AxiosError, AxiosRequestConfig } from 'axios';
 import { API_CONFIG } from '../config/api.config';
 import type { ApiResponse } from '../types/api.types';
 
+const getRequestScope = (url?: string) => {
+  const path = url || '';
+  if (path.includes('/api/admin/')) return 'ADMIN';
+  if (path.includes('/api/user/')) return 'USER';
+  if (path.includes('/auth/')) return 'AUTH';
+  return 'GENERAL';
+};
+
+const summarizeResponseData = (data: unknown) => {
+  if (Array.isArray(data)) {
+    return `array(${data.length})`;
+  }
+  if (data && typeof data === 'object') {
+    return `object(${Object.keys(data as Record<string, unknown>).length} keys)`;
+  }
+  return typeof data;
+};
+
 // Create axios instance with default config
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_CONFIG.baseURL,
@@ -27,18 +45,13 @@ apiClient.interceptors.request.use(
 
     // Log request in development
     if (API_CONFIG.enableDevTools) {
-      console.log('🚀 API Request:', {
-        method: config.method?.toUpperCase(),
-        url: config.url,
-        data: config.data,
-        params: config.params,
-      });
+      const scope = getRequestScope(config.url);
+      // request logging removed
     }
 
     return config;
   },
   (error) => {
-    console.error('❌ Request Error:', error);
     return Promise.reject(error);
   }
 );
@@ -48,11 +61,8 @@ apiClient.interceptors.response.use(
   (response) => {
     // Log response in development
     if (API_CONFIG.enableDevTools) {
-      console.log('✅ API Response:', {
-        url: response.config.url,
-        status: response.status,
-        data: response.data,
-      });
+      const scope = getRequestScope(response.config.url);
+      // response logging removed
     }
 
     return response;
@@ -61,11 +71,6 @@ apiClient.interceptors.response.use(
     // Handle different error types
     if (error.response) {
       // Server responded with error status
-      console.error('❌ API Error Response:', {
-        url: error.config?.url,
-        status: error.response.status,
-        data: error.response.data,
-      });
 
       // Handle specific status codes
       switch (error.response.status) {
@@ -75,21 +80,18 @@ apiClient.interceptors.response.use(
           window.dispatchEvent(new CustomEvent('auth:logout'));
           break;
         case 403:
-          console.error('Access forbidden');
           break;
         case 404:
-          console.error('Resource not found');
           break;
         case 500:
-          console.error('Server error');
           break;
         default:
-          console.error('API error:', error.response.status);
+          break;
       }
     } else if (error.request) {
-      console.error('❌ Network Error:', error.message);
+      // Network error
     } else {
-      console.error('❌ Error:', error.message);
+      // Other error
     }
 
     return Promise.reject(error);
@@ -110,7 +112,6 @@ class ApiService {
   ): Promise<ApiResponse<T>> {
     try {
       const response = await apiClient.get<T>(url, { params, ...config });
-      console.log('🚀 API Response:', response.data);
       return { success: true, data: response.data };
     } catch (error) {
       return this.handleError(error);

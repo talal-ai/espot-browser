@@ -21,7 +21,7 @@ const playNotificationSound = () => {
         oscillator.start(audioContext.currentTime)
         oscillator.stop(audioContext.currentTime + 0.2)
     } catch (error) {
-        console.warn('Could not play notification sound:', error)
+        // silently ignore
     }
 }
 

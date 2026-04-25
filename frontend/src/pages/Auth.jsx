@@ -45,12 +45,10 @@ const Auth = () => {
           const value = localStorage.getItem(key);
           if (value && value.includes('localhost:3000')) {
             localStorage.removeItem(key);
-            console.log('Cleared stale OAuth state:', key);
           }
         }
       });
     } catch (err) {
-      console.error('Error cleaning OAuth state:', err);
     }
   }, [location.search, navigate]);
 

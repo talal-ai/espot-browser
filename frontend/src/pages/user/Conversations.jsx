@@ -18,7 +18,7 @@ export default function UserConversations() {
       const res = await apiService.get('/chat/my')
       if (res.success) setConversation(res.data.conversation)
     } catch (e) {
-      console.error(e)
+      // silently ignore
     }
   }
 

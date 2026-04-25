@@ -284,7 +284,6 @@ http:45.33.32.156:3128::`;
       }
       return null;
     } catch (error) {
-      console.error('Failed to verify IP:', error);
       return null;
     } finally {
       setVerifying(false);

@@ -31,7 +31,6 @@ export const authService = {
      */
     async signInWithGoogle() {
         const redirectUrl = getRedirectUrl() + '?popup=true';
-        console.log('[AuthService] Starting Google OAuth (Popup) with redirect:', redirectUrl);
 
         const { data, error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
@@ -46,12 +45,10 @@ export const authService = {
         });
 
         if (error) {
-            console.error('[AuthService] Google OAuth error:', error);
             throw error;
         }
 
         if (data?.url) {
-            console.log('[AuthService] OAuth initiated, opening popup:', data.url);
             // Open the OAuth URL in a new window (popup)
             // Dimensions: 500x600 is standard for auth popups
             const width = 500;
@@ -80,7 +77,6 @@ export const authService = {
      * Uses custom backend API for email/password authentication
      */
     async login(emailOrUsername: string, password: string) {
-        console.log('[AuthService] Attempting login for:', emailOrUsername);
 
         try {
             // Get device fingerprint with robust fallback
@@ -91,10 +87,8 @@ export const authService = {
                     deviceFingerprint = fp;
                 }
             } catch (e) {
-                console.warn('[AuthService] Failed to get device fingerprint, using fallback:', e);
+                // fingerprint fallback
             }
-
-            console.log('[AuthService] Login payload device_id:', deviceFingerprint.visitorId);
 
             // Use custom backend API endpoint for email/password login
             const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/login`, {
@@ -116,14 +110,12 @@ export const authService = {
             }
 
             const data = await response.json();
-            console.log('[AuthService] Login successful for:', data.user?.email);
-            
+
             return {
                 user: data.user,
                 token: data.token,
             };
         } catch (error: any) {
-            console.error('[AuthService] Login error:', error);
             throw error;
         }
     },
@@ -133,7 +125,6 @@ export const authService = {
      * Uses custom backend API for email/password signup
      */
     async signup(email: string, password: string, username?: string) {
-        console.log('[AuthService] Attempting signup for:', email);
 
         try {
             // Use custom backend API endpoint for email/password signup
@@ -155,14 +146,12 @@ export const authService = {
             }
 
             const data = await response.json();
-            console.log('[AuthService] Signup successful for:', data.user?.email);
-            
+
             return {
                 user: data.user,
                 token: data.token,
             };
         } catch (error: any) {
-            console.error('[AuthService] Signup error:', error);
             throw error;
         }
     },
@@ -176,7 +165,7 @@ export const authService = {
         if (error) {
             // Don't log AuthSessionMissingError as it's expected on initial load
             if (error.name !== 'AuthSessionMissingError') {
-                console.error('[AuthService] Get user error:', error);
+                // suppress expected auth errors
             }
             return null;
         }
@@ -215,7 +204,6 @@ export const authService = {
         const { data, error } = await supabase.auth.getSession();
 
         if (error) {
-            console.error('[AuthService] Get session error:', error);
             return null;
         }
 
@@ -228,7 +216,6 @@ export const authService = {
      * then does network calls in background (fire-and-forget)
      */
     async logout(token?: string | null) {
-        console.log('[AuthService] Signing out...');
         
         // 1. Clear local storage IMMEDIATELY for instant UI response
         const authToken = token || localStorage.getItem("auth_token");
@@ -237,9 +224,7 @@ export const authService = {
         // 2. Sign out from Supabase FIRST (faster, local-ish operation)
         try {
             await supabase.auth.signOut();
-            console.log('[AuthService] Supabase signout complete');
         } catch (err) {
-            console.error('[AuthService] Supabase signout error:', err);
             // Continue anyway - local storage is already cleared
         }
         
@@ -252,13 +237,13 @@ export const authService = {
                     'Content-Type': 'application/json',
                 },
             }).then(() => {
-                console.log('[AuthService] Backend session terminated');
-            }).catch((err) => {
-                console.error('[AuthService] Backend logout failed:', err);
+                // backend session ended
+            }).catch(() => {
+                // silently ignore
             });
         }
 
-        console.log('[AuthService] Signed out successfully');
+        // signout complete
     },
 
     /**
@@ -268,7 +253,6 @@ export const authService = {
         const { data, error } = await supabase.auth.refreshSession();
 
         if (error) {
-            console.error('[AuthService] Refresh session error:', error);
             throw error;
         }
 

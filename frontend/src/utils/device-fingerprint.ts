@@ -21,14 +21,12 @@ export const getDeviceFingerprint = async (): Promise<DeviceFingerprint> => {
     const fp = await fpPromise;
     const result = await fp.get();
     
-    console.log('[DeviceFingerprint] Generated visitorId:', result.visitorId);
 
     return {
       visitorId: result.visitorId,
       components: result.components
     };
   } catch (error) {
-    console.error('Failed to get device fingerprint:', error);
     // Return a fallback or handle error appropriately
     return {
       visitorId: 'unknown-device-' + Math.random().toString(36).substring(2, 15),

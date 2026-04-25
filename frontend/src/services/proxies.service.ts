@@ -113,7 +113,6 @@ class ProxiesService {
 
       // Step 2: If running in Electron, activate proxy for browser traffic
       if (isElectron && window.electronAPI) {
-        console.log('🔄 Activating proxy in Electron for browser traffic...');
 
         const proxyConfig = {
           protocol: backendResponse.data.protocol,
@@ -126,22 +125,18 @@ class ProxiesService {
         const electronResponse = await window.electronAPI.proxy.activate(proxyConfig);
 
         if (!electronResponse.success) {
-          console.error('❌ Failed to activate proxy in Electron:', electronResponse.error);
           return {
             success: false,
             error: `Backend activated but Electron failed: ${electronResponse.error}`,
           } as any;
         }
 
-        console.log('✅ Proxy activated in both backend and Electron');
       } else {
-        console.warn('⚠️ Not running in Electron - proxy only active for backend API calls');
       }
 
       return backendResponse;
 
     } catch (error: any) {
-      console.error('❌ Failed to activate proxy:', error);
       return {
         success: false,
         error: error.message || 'Failed to activate proxy',
@@ -163,22 +158,18 @@ class ProxiesService {
 
       // Step 2: If running in Electron, deactivate proxy for browser traffic
       if (isElectron && window.electronAPI) {
-        console.log('🔄 Deactivating proxy in Electron...');
 
         const electronResponse = await window.electronAPI.proxy.deactivate();
 
         if (!electronResponse.success) {
-          console.error('❌ Failed to deactivate proxy in Electron:', electronResponse.error);
           // Continue anyway - at least backend is deactivated
         } else {
-          console.log('✅ Proxy deactivated in both backend and Electron');
         }
       }
 
       return backendResponse;
 
     } catch (error: any) {
-      console.error('❌ Failed to deactivate proxy:', error);
       return {
         success: false,
         error: error.message || 'Failed to deactivate proxy',
@@ -215,11 +206,9 @@ class ProxiesService {
     }
 
     try {
-      console.log('🔄 Verifying proxy is routing browser traffic...');
       const result = await window.electronAPI.proxy.verify();
 
       if (result.success && result.data) {
-        console.log('✅ Proxy verification result:', result.data);
         return {
           success: true,
           working: result.data.working,
@@ -233,7 +222,6 @@ class ProxiesService {
       };
 
     } catch (error: any) {
-      console.error('❌ Failed to verify proxy:', error);
       return {
         success: false,
         error: error.message || 'Failed to verify proxy',

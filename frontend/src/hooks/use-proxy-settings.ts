@@ -64,7 +64,6 @@ export const useProxySettings = () => {
         loading: false,
       }));
     } catch (error) {
-      console.error('Failed to load proxy settings:', error);
       setState((prev) => ({ ...prev, loading: false }));
       toast({
         title: 'Error',
@@ -118,7 +117,6 @@ export const useProxySettings = () => {
           return null;
         }
       } catch (error: any) {
-        console.error('Failed to activate proxy:', error);
         setState((prev) => ({ ...prev, testing: false }));
         
         toast({
@@ -163,7 +161,6 @@ export const useProxySettings = () => {
       setState((prev) => ({ ...prev, testing: false }));
       return false;
     } catch (error: any) {
-      console.error('Failed to deactivate proxy:', error);
       setState((prev) => ({ ...prev, testing: false }));
       
       toast({
@@ -207,7 +204,6 @@ export const useProxySettings = () => {
         return false;
       }
     } catch (error: any) {
-      console.error('Failed to verify proxy:', error);
       setState((prev) => ({ ...prev, testing: false }));
       
       toast({
@@ -233,7 +229,6 @@ export const useProxySettings = () => {
         description: `Current IP: ${currentIP}`,
       });
     } catch (error) {
-      console.error('Failed to refresh IP:', error);
       toast({
         title: 'Error',
         description: 'Failed to refresh IP',
@@ -250,7 +245,6 @@ export const useProxySettings = () => {
       const geo = await proxySettingsService.getProxyGeolocation();
       return geo;
     } catch (error) {
-      console.error('Failed to get geolocation:', error);
       toast({
         title: 'Error',
         description: 'Failed to get geolocation',

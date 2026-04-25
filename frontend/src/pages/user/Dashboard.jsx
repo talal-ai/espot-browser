@@ -124,15 +124,14 @@ const UserDashboard = () => {
                       max_touch_points: def.profile.max_touch_points || 0,
                     };
                     await window.electron.fingerprint.setActive(electronProfile, user.id);
-                    console.log('[ESPOT] ✅ Auto-activated default profile:', electronProfile.name);
                   } catch (e) {
-                    console.warn('[ESPOT] Auto-activate skipped:', e?.message);
+                    // silently ignore
                   }
                 }
               }
             }
           } catch (e) {
-            console.error('[DEBUG] Failed to load fingerprint profiles:', e);
+            // silently ignore
           }
         };
         const loadProxies = async () => {
@@ -162,19 +161,18 @@ const UserDashboard = () => {
                       });
                     }
                   } catch (err) {
-                    console.error('❌ Failed to auto-activate proxy:', err);
+                    // silently ignore
                   }
                 }
               }
             }
           } catch (e) {
-            console.error('[DEBUG] Failed to load user proxies:', e);
+            // silently ignore
           }
         };
         void loadFingerprints();
         void loadProxies();
       } catch (e) {
-        console.error(e);
         setLoading(false);
       }
     };
@@ -225,9 +223,8 @@ const UserDashboard = () => {
             };
 
             await window.electron.fingerprint.setActive(electronProfile, user.id);
-            console.log('[ESPOT] ✅ Fingerprint profile activated in Electron:', electronProfile.name);
           } catch (electronError) {
-            console.warn('[ESPOT] Failed to set active profile in Electron:', electronError.message);
+            // silently ignore
           }
         }
 
@@ -251,7 +248,6 @@ const UserDashboard = () => {
         }
       }
     } catch (error) {
-      console.error('Activation error:', error);
       toast({
         variant: "destructive",
         title: "Activation Failed",
@@ -285,14 +281,6 @@ const UserDashboard = () => {
       const credentials = credRes.data || { username: '', password: '', service_url: service.url };
       const url = credentials.service_url || service.url;
       const resolvedShowUrlBar = credentials.show_url_bar ?? service.show_url_bar ?? false;
-
-      console.log('[ServiceLaunch] resolved URL bar flag', {
-        serviceId: service.id,
-        serviceName: service.name,
-        fromCredentials: credentials.show_url_bar,
-        fromServiceList: service.show_url_bar,
-        resolvedShowUrlBar,
-      });
 
       if (window.electronAPI?.service?.launch) {
         const result = await window.electronAPI.service.launch({
@@ -336,7 +324,6 @@ const UserDashboard = () => {
         const { id, show_url_bar } = payload.new;
         if (window.electronAPI?.service?.updateUrlBar) {
           window.electronAPI.service.updateUrlBar(id, !!show_url_bar);
-          console.log(`[ESPOT Realtime] URL bar toggled for service ${id}: ${show_url_bar}`);
         }
       })
       .subscribe();

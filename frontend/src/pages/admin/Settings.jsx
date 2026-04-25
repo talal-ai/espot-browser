@@ -28,7 +28,6 @@ const Settings = () => {
           setAppVersion('Unknown');
         }
       } catch (error) {
-        console.error('Failed to get app version:', error);
         setAppVersion('Error');
       }
     };
@@ -172,18 +171,15 @@ const Settings = () => {
                   <Button 
                     variant="outline" 
                     onClick={() => {
-                      console.log('Checking for updates clicked...');
                       if (window.electronAPI?.updater?.checkForUpdates) {
                         try {
                           sessionStorage.setItem('manualUpdateCheck', 'true');
                           window.electronAPI.updater.checkForUpdates();
                           toast({ title: 'Checking for updates...', description: 'Please wait while we check for the latest version.' });
                         } catch (err) {
-                          console.error('Update check failed:', err);
                           toast({ title: 'Update Check Failed', description: 'Could not connect to update server.', variant: 'destructive' });
                         }
                       } else {
-                        console.error('Electron API not found');
                         toast({ title: 'Error', description: 'Update API not available. Try restarting the app.', variant: 'destructive' });
                       }
                     }}

@@ -43,7 +43,6 @@ export function UpdateNotification() {
     try {
       await window.electronAPI.updates.check();
     } catch (error) {
-      console.error('Failed to check for updates:', error);
     }
   };
 
@@ -54,7 +53,6 @@ export function UpdateNotification() {
     try {
       await window.electronAPI.updates.download();
     } catch (error) {
-      console.error('Failed to download update:', error);
       setIsDownloading(false);
     }
   };
@@ -65,7 +63,6 @@ export function UpdateNotification() {
     try {
       await window.electronAPI.updates.install();
     } catch (error) {
-      console.error('Failed to install update:', error);
     }
   };
 

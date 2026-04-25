@@ -98,14 +98,6 @@ const UserServices = () => {
       const url = credentials.service_url || service.url;
       const resolvedShowUrlBar = credentials.show_url_bar ?? service.show_url_bar ?? false;
 
-      console.log('[ServiceLaunch] resolved URL bar flag', {
-        serviceId: service.id,
-        serviceName: service.name,
-        fromCredentials: credentials.show_url_bar,
-        fromServiceList: service.show_url_bar,
-        resolvedShowUrlBar,
-      });
-
       if (window.electronAPI?.service?.launch) {
         const result = await window.electronAPI.service.launch({
           serviceId: service.id,

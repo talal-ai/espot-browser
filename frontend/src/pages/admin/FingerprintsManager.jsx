@@ -67,12 +67,10 @@ const FingerprintsManager = () => {
 
       if (profilesRes.success) {
         setProfiles(profilesRes.data || []);
-        console.log('Loaded profiles:', profilesRes.data?.length);
       }
       if (templatesRes.success) {
         const templatesData = templatesRes.data || [];
         setTemplates(templatesData);
-        console.log('Loaded templates:', templatesData.length);
         if (templatesData.length === 0) {
           toast({
             variant: "destructive",
@@ -82,7 +80,6 @@ const FingerprintsManager = () => {
           setTemplates(fallbackTemplates);
         }
       } else {
-        console.error('Templates failed:', templatesRes);
         toast({
           variant: "destructive",
           title: "Templates Error",
@@ -93,10 +90,8 @@ const FingerprintsManager = () => {
       }
       if (usersRes.success) {
         setUsers(usersRes.data || []);
-        console.log('Loaded users:', usersRes.data?.length);
       }
     } catch (error) {
-      console.error("Failed to load data:", error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -124,7 +119,6 @@ const FingerprintsManager = () => {
         throw new Error(res.error?.message || 'Failed to generate profile');
       }
     } catch (error) {
-      console.error('Generate error:', error);
       toast({
         variant: "destructive",
         title: "Generation Failed",
@@ -161,7 +155,6 @@ const FingerprintsManager = () => {
         throw new Error(res.error?.message || 'Failed to assign profile');
       }
     } catch (error) {
-      console.error('Assignment error:', error);
       toast({
         variant: "destructive",
         title: "Assignment Failed",
@@ -179,7 +172,7 @@ const FingerprintsManager = () => {
       setProfiles(prev => prev.filter(p => p.id !== id));
       toast({ title: "Deleted", description: "Profile removed" });
     } catch (error) {
-      console.error(error);
+      // silently ignore
     }
   };
 

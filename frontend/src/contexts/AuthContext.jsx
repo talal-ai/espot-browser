@@ -49,7 +49,7 @@ export const AuthProvider = ({ children }) => {
               enrichedUser = { ...enrichedUser, ...me };
             }
           } catch (err) {
-            console.log('[AuthContext] Backend /auth/me failed, using Supabase data only:', err.message);
+            // Fallback to Supabase data only
           }
 
           setUser(enrichedUser);
@@ -60,7 +60,7 @@ export const AuthProvider = ({ children }) => {
           setIsAuthenticated(false);
         }
       } catch (err) {
-        console.error("Auth state change handling failed:", err);
+        // silently ignore
       }
     });
 
@@ -146,7 +146,6 @@ export const AuthProvider = ({ children }) => {
       const { data, error } = await supabase.auth.getSession();
       
       if (error) {
-        console.error("[AuthContext] Session retrieval error:", error);
         throw error;
       }
 
@@ -173,7 +172,7 @@ export const AuthProvider = ({ children }) => {
             enrichedUser = { ...enrichedUser, ...me };
           }
         } catch (err) {
-          console.log('[AuthContext] Backend /auth/me failed, using Supabase data only:', err.message);
+          // Fallback to Supabase data only
         }
 
         setUser(enrichedUser);
@@ -207,8 +206,7 @@ export const AuthProvider = ({ children }) => {
             localStorage.removeItem("auth_token");
           }
         } catch (err) {
-          // Network or other error: keep token so session can be restored when backend is reachable again
-          console.warn("[AuthContext] Could not verify session (backend unreachable?), keeping token for retry:", err?.message || err);
+          // Keep token for retry when backend is unreachable
         }
         // Do not fall through to clear token when we kept it for retry
         setLoading(false);
@@ -219,7 +217,6 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem("auth_token");
       setIsAuthenticated(false);
     } catch (error) {
-      console.error("[AuthContext] Auth check failed:", error);
       localStorage.removeItem("auth_token");
       setIsAuthenticated(false);
     } finally {
@@ -276,14 +273,14 @@ export const AuthProvider = ({ children }) => {
     try {
       await authService.logout(token);
     } catch (error) {
-      console.error("Logout error:", error);
+      // silently ignore
     }
     
     // Deactivate user's proxy in Electron in background (don't block navigation)
     if (userId && window.electronAPI?.proxy?.deactivateForUser) {
       window.electronAPI.proxy.deactivateForUser(userId)
-        .then(() => console.log('✅ User proxy deactivated on logout'))
-        .catch((err) => console.error('Failed to deactivate proxy on logout:', err));
+        .then(() => {})
+        .catch(() => {});
     }
   };
 

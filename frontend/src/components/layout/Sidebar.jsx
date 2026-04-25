@@ -36,7 +36,6 @@ const Sidebar = () => {
           setProxyStatus({ loading: false, proxy: null });
         }
       } catch (err) {
-        console.error('Failed to load proxy status:', err);
         setProxyStatus({ loading: false, proxy: null });
       }
     };
@@ -149,11 +148,9 @@ const Sidebar = () => {
                     window.electronAPI.updater.checkForUpdates();
                     toast({ title: 'Checking for updates...', description: 'Please wait while we check for the latest version.' });
                   } catch (err) {
-                    console.error('Update check failed:', err);
                     toast({ title: 'Update Check Failed', description: 'Could not connect to update server.', variant: 'destructive' });
                   }
                 } else {
-                  console.error('Electron API not found');
                   toast({ title: 'Error', description: 'Update API not available. Try restarting the app.', variant: 'destructive' });
                 }
               }}

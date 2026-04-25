@@ -97,12 +97,10 @@ class BrowserInstancesService {
                     );
 
                     if (!windowResponse.success) {
-                        console.error('Failed to create Electron window:', windowResponse.error);
                     }
 
                     // If instance has a proxy, activate it for this user
                     if (instance.proxy_id && window.electronAPI) {
-                        console.log(`Activating proxy ${instance.proxy_id} for instance ${instanceId}`);
                         // Proxy activation handled separately
                     }
                 }

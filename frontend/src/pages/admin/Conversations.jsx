@@ -11,6 +11,7 @@ import PageSkeleton from '../../components/common/PageSkeleton'
 import GlassCard from '../../components/common/GlassCard'
 import StatCard from '../../components/common/StatCard'
 import { useChatNotifications } from '../../hooks/use-chat-notifications'
+import { useUsers } from '../../hooks/use-users'
 
 export default function AdminConversations() {
   const [items, setItems] = useState([])
@@ -19,8 +20,9 @@ export default function AdminConversations() {
   const [refreshing, setRefreshing] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const { hasUnread, getUnreadCount, clearConversationNotifications } = useChatNotifications()
+  const { users } = useUsers()
 
-  const loadConversations = async () => {
+  const loadConversations = async (currentUsers = users) => {
     const res = await apiService.get('/chat/conversations')
     if (res.success) {
       const list = (res.data.items || [])
@@ -29,15 +31,12 @@ export default function AdminConversations() {
         if (!map.has(c.created_by)) map.set(c.created_by, c)
       }
       const unique = Array.from(map.values())
-      const enriched = []
-      for (const c of unique) {
+      const enriched = unique.map(c => {
         let e = { ...c }
-        try {
-          const u = await usersService.getUser(c.created_by)
-          if (u.success && u.data) e.creator = u.data
-        } catch { }
-        enriched.push(e)
-      }
+        const u = currentUsers.find(user => user.id === c.created_by)
+        if (u) e.creator = u
+        return e
+      })
       setItems(enriched)
     }
   }
@@ -48,10 +47,8 @@ export default function AdminConversations() {
       const c = payload?.conversation
       if (!c) return
       let enriched = { ...c }
-      try {
-        const u = await usersService.getUser(c.created_by)
-        if (u.success && u.data) enriched.creator = u.data
-      } catch { }
+      const u = users.find(user => user.id === c.created_by)
+      if (u) enriched.creator = u
       setItems((prev) => {
         const idx = prev.findIndex((x) => x.created_by === enriched.created_by)
         if (idx >= 0) {
@@ -65,12 +62,12 @@ export default function AdminConversations() {
     chatSocket.on('conversation_opened', onOpened)
 
     setLoading(true)
-    loadConversations().finally(() => setLoading(false))
+    loadConversations(users).finally(() => setLoading(false))
 
     return () => {
       chatSocket.off('conversation_opened', onOpened)
     }
-  }, [])
+  }, [users])
 
   const refresh = async () => {
     setRefreshing(true)
