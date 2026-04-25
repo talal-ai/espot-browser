@@ -1,16 +1,21 @@
+import os
 import socketio
 from typing import Dict, Any
 from src.auth.jwt import decode_token
 from .service import add_message, add_read_receipt, get_conversation_created_by
 from src.services.supabase_service import supabase_service
 
-sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=[
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:5174",
-])
+default_origins = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174"
+socket_allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", default_origins).split(",")
+    if origin.strip()
+]
+
+sio = socketio.AsyncServer(
+    async_mode="asgi",
+    cors_allowed_origins=socket_allowed_origins
+)
 
 async def _user_from_auth(auth: Dict[str, Any]) -> Dict[str, Any]:
     token = (auth or {}).get("token")
