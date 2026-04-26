@@ -280,7 +280,7 @@ const Groups = () => {
   return (
     <div className="p-6 space-y-6 h-full flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <Users className="w-6 h-6 text-blue-500" />
@@ -290,7 +290,7 @@ const Groups = () => {
             Manage service groups and custom user groups
           </p>
         </div>
-        <Button onClick={() => setShowCreateGroupDialog(true)} className="gap-2">
+        <Button onClick={() => setShowCreateGroupDialog(true)} className="gap-2 self-start sm:self-auto">
           <FolderPlus className="w-4 h-4" />
           New Custom Group
         </Button>

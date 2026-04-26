@@ -498,10 +498,10 @@ http:45.33.32.156:3128::`;
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Proxy Management</h1>
-          <p className="text-gray-600 dark:text-gray-400">Configure and manage proxy servers for secure routing</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1">Proxy Management</h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Configure and manage proxy servers for secure routing</p>
         </div>
         <div className="flex gap-3 flex-wrap">
           <Button
@@ -557,7 +557,7 @@ http:45.33.32.156:3128::`;
                 <DialogTitle>{editingProxy ? 'Edit Proxy' : 'Add New Proxy'}</DialogTitle>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="host">Host/IP Address</Label>
                     <Input
@@ -598,7 +598,7 @@ http:45.33.32.156:3128::`;
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="username">Username (Optional)</Label>
                     <Input

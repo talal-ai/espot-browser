@@ -356,17 +356,17 @@ const UserDashboard = () => {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-5 sm:space-y-6 animate-in fade-in duration-500">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1">
             Welcome back, <span className="text-gray-900 dark:text-white">{userDetails?.name || user?.name || user?.username || 'User'}</span>
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">Here's an overview of your account and activity</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Here's an overview of your account and activity</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="backdrop-blur-xl bg-white/60 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 rounded-lg px-4 py-2 text-sm text-gray-900 dark:text-white">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="hidden sm:flex items-center backdrop-blur-xl bg-white/60 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white">
             <span className="font-medium">{now.toLocaleDateString()}</span>
             <span className="mx-2 text-gray-500 dark:text-gray-400">•</span>
             <span className="tabular-nums">{now.toLocaleTimeString()}</span>
@@ -386,7 +386,7 @@ const UserDashboard = () => {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
         <StatCard
           title="Assigned Services"
           value={userServices.length}
@@ -496,7 +496,7 @@ const UserDashboard = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6">
             <div className="space-y-1">
               <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
                 <UserIcon className="w-3 h-3" /> Full Name

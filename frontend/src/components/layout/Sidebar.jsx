@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, Wifi, Monitor, Key, AppWindow, Activity, Settings, MessageCircle, Fingerprint, Shield, ShieldOff, LogOut, User, RefreshCw } from 'lucide-react';
+import { LayoutDashboard, Users, Wifi, Monitor, Key, AppWindow, Activity, Settings, MessageCircle, Fingerprint, Shield, ShieldOff, LogOut, User, RefreshCw, X } from 'lucide-react';
 
 import { useAuth } from '../../contexts/AuthContext';
 import { useChatNotifications } from '../../hooks/use-chat-notifications';
@@ -8,7 +8,7 @@ import { useToast } from '../../hooks/use-toast';
 import { proxiesService } from '../../services/proxies.service';
 import { Button } from '../ui/button';
 
-const Sidebar = () => {
+const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -42,6 +42,11 @@ const Sidebar = () => {
     loadProxyStatus();
   }, [user?.id, isAdmin]); // only refetch when user id or role changes, not on every user object reference change
 
+  // Close sidebar on route change (mobile)
+  useEffect(() => {
+    if (onClose) onClose();
+  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const menuItems = isAdmin
     ? [
       { icon: LayoutDashboard, label: 'Dashboard', path: '/admin' },
@@ -63,16 +68,32 @@ const Sidebar = () => {
     ];
 
   return (
-    <aside className="absolute left-0 top-0 h-full w-64 backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 z-40 transition-all duration-500 ease-out">
+    <aside
+      className={`
+        fixed left-0 top-0 h-full w-64
+        backdrop-blur-xl bg-white/70 dark:bg-gray-900/70
+        z-40 transition-transform duration-300 ease-out
+        ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+        md:translate-x-0
+      `}
+    >
       <div className="flex flex-col h-full">
         {/* Brand header */}
         <div className="p-6">
           <div className="flex items-center gap-3">
             <img src="icon1.png" width={40} height={40} className="rounded-lg shadow-sm" alt="ESPOT Browser Logo" />
-            <div>
+            <div className="flex-1 min-w-0">
               <h1 className="text-xl font-bold bg-gradient-espot bg-clip-text text-transparent">ESPOT</h1>
               <p className="text-xs text-gray-500 dark:text-gray-400">{isAdmin ? 'Browser Admin' : 'Browser User'}</p>
             </div>
+            {/* Close button — mobile only */}
+            <button
+              onClick={onClose}
+              className="md:hidden p-1.5 rounded-md text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all"
+              aria-label="Close menu"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
 

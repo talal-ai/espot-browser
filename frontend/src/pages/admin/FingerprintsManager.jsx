@@ -257,10 +257,10 @@ const FingerprintsManager = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Fingerprint Profiles</h1>
-          <p className="text-gray-600 dark:text-gray-400">Manage and assign browser fingerprints to users</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1">Fingerprint Profiles</h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Manage and assign browser fingerprints to users</p>
         </div>
         <Button
           variant="outline"
@@ -273,7 +273,7 @@ const FingerprintsManager = () => {
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-7">
 
         {/* Generator Card */}
         <Card className="col-span-4">
@@ -282,7 +282,7 @@ const FingerprintsManager = () => {
             <CardDescription>Create realistic profiles from validated templates</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex gap-4 items-end">
+            <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
               <div className="grid w-full gap-2">
                 <label className="text-sm font-medium leading-none">Select Template</label>
                 <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
@@ -302,7 +302,7 @@ const FingerprintsManager = () => {
                   </SelectContent>
                 </Select>
               </div>
-              <Button onClick={handleGenerate} disabled={!selectedTemplate || generating}>
+              <Button onClick={handleGenerate} disabled={!selectedTemplate || generating} className="shrink-0 w-full sm:w-auto">
                 {generating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Generate Profile
               </Button>

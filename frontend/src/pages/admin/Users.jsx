@@ -322,12 +322,12 @@ const Users = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">User Management</h1>
-          <p className="text-gray-600 dark:text-gray-400">Manage users and their access permissions</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1">User Management</h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Manage users and their access permissions</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           <Button
             variant="outline"
             onClick={refresh}
@@ -444,14 +444,14 @@ const Users = () => {
             <DialogTitle>Manage {editingUser ? (editingUser.username || editingUser.email) : ''}</DialogTitle>
           </DialogHeader>
           <div className="space-y-6">
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setActiveTab('details')}><Cog className="w-4 h-4 mr-2" />Details</Button>
-              <Button variant="outline" onClick={() => setActiveTab('services')}><Cog className="w-4 h-4 mr-2" />Panels</Button>
-              <Button variant="outline" onClick={() => setActiveTab('proxies')}><Cog className="w-4 h-4 mr-2" />Proxies</Button>
-              <Button variant="outline" onClick={() => setActiveTab('browser')}><Globe className="w-4 h-4 mr-2" />Browser</Button>
-              <Button variant="outline" onClick={() => setActiveTab('profiles')}><Fingerprint className="w-4 h-4 mr-2" />Profiles</Button>
-              <Button variant="outline" onClick={() => setActiveTab('devices')}><Monitor className="w-4 h-4 mr-2" />Devices</Button>
-              <Button variant="outline" onClick={() => setActiveTab('admin')}><Cog className="w-4 h-4 mr-2" />Admin</Button>
+            <div className="flex flex-wrap gap-1.5">
+              <Button size="sm" variant={activeTab === 'details' ? 'default' : 'outline'} onClick={() => setActiveTab('details')}><Cog className="w-3.5 h-3.5 mr-1.5" />Details</Button>
+              <Button size="sm" variant={activeTab === 'services' ? 'default' : 'outline'} onClick={() => setActiveTab('services')}><Cog className="w-3.5 h-3.5 mr-1.5" />Panels</Button>
+              <Button size="sm" variant={activeTab === 'proxies' ? 'default' : 'outline'} onClick={() => setActiveTab('proxies')}><Cog className="w-3.5 h-3.5 mr-1.5" />Proxies</Button>
+              <Button size="sm" variant={activeTab === 'browser' ? 'default' : 'outline'} onClick={() => setActiveTab('browser')}><Globe className="w-3.5 h-3.5 mr-1.5" />Browser</Button>
+              <Button size="sm" variant={activeTab === 'profiles' ? 'default' : 'outline'} onClick={() => setActiveTab('profiles')}><Fingerprint className="w-3.5 h-3.5 mr-1.5" />Profiles</Button>
+              <Button size="sm" variant={activeTab === 'devices' ? 'default' : 'outline'} onClick={() => setActiveTab('devices')}><Monitor className="w-3.5 h-3.5 mr-1.5" />Devices</Button>
+              <Button size="sm" variant={activeTab === 'admin' ? 'default' : 'outline'} onClick={() => setActiveTab('admin')}><Cog className="w-3.5 h-3.5 mr-1.5" />Admin</Button>
             </div>
             {activeTab === 'details' && (
               <form onSubmit={handleSubmit} className="space-y-4">

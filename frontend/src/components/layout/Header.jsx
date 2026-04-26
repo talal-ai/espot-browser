@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { Sun, Moon, Search, LogOut, User, Mail } from 'lucide-react';
+import { Sun, Moon, Search, LogOut, User, Mail, Menu } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import {
@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 
-const Header = () => {
+const Header = ({ onMenuToggle }) => {
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -42,8 +42,17 @@ const Header = () => {
   };
 
   return (
-    <header className="absolute top-0 right-0 left-64 h-16 backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 z-30 transition-all duration-300">
-      <div className="h-full px-6 flex items-center justify-between">
+    <header className="fixed top-0 right-0 left-0 md:left-64 h-16 backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 z-30 transition-all duration-300">
+      <div className="h-full px-4 sm:px-6 flex items-center gap-3">
+        {/* Hamburger — mobile only */}
+        <button
+          onClick={onMenuToggle}
+          className="md:hidden p-2 rounded-lg text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-all flex-shrink-0"
+          aria-label="Open menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
         {/* Search Bar */}
         <div className="flex-1 max-w-xl">
           <div className="relative">
@@ -57,7 +66,7 @@ const Header = () => {
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           <Button
             variant="ghost"
             size="icon"
@@ -83,8 +92,6 @@ const Header = () => {
               <Mail className="w-5 h-5 text-red-500 group-hover:text-red-600 transition-colors" />
             </Button>
           )}
-
-
 
           {/* User Menu */}
           <DropdownMenu>
