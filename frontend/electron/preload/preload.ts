@@ -1,4 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import { PROXY_IPC_CHANNELS } from '../shared/proxy-ipc-contract';
+
+const invokeProxySafely = async (channel: string, ...args: any[]) => {
+  try {
+    return await ipcRenderer.invoke(channel, ...args);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      error: `IPC channel unavailable: ${channel}. ${message}`,
+    };
+  }
+};
 
 // Define the API exposed to the renderer process
 const api = {
@@ -48,16 +61,16 @@ const api = {
     testProxy: (proxyId: string) => ipcRenderer.invoke('proxy:testProxy', proxyId),
 
     // Global proxy configuration (Step 2-3)
-    activate: (proxyConfig: any) => ipcRenderer.invoke('proxy:activate', proxyConfig),
-    deactivate: () => ipcRenderer.invoke('proxy:deactivate'),
-    getStatus: () => ipcRenderer.invoke('proxy:getStatus'),
-    verify: () => ipcRenderer.invoke('proxy:verify'),
+    activate: (proxyConfig: any) => invokeProxySafely(PROXY_IPC_CHANNELS.activate, proxyConfig),
+    deactivate: () => invokeProxySafely(PROXY_IPC_CHANNELS.deactivate),
+    getStatus: () => invokeProxySafely(PROXY_IPC_CHANNELS.getStatus),
+    verify: () => invokeProxySafely(PROXY_IPC_CHANNELS.verify),
 
     // Per-user proxy configuration (Step 4)
-    activateForUser: (userId: string, proxyConfig: any) => ipcRenderer.invoke('proxy:activateForUser', userId, proxyConfig),
-    deactivateForUser: (userId: string) => ipcRenderer.invoke('proxy:deactivateForUser', userId),
-    getUserStatus: (userId: string) => ipcRenderer.invoke('proxy:getUserStatus', userId),
-    getAllUserSessions: () => ipcRenderer.invoke('proxy:getAllUserSessions'),
+    activateForUser: (userId: string, proxyConfig: any) => invokeProxySafely(PROXY_IPC_CHANNELS.activateForUser, userId, proxyConfig),
+    deactivateForUser: (userId: string) => invokeProxySafely(PROXY_IPC_CHANNELS.deactivateForUser, userId),
+    getUserStatus: (userId: string) => invokeProxySafely(PROXY_IPC_CHANNELS.getUserStatus, userId),
+    getAllUserSessions: () => invokeProxySafely(PROXY_IPC_CHANNELS.getAllUserSessions),
   },
 
   // System API

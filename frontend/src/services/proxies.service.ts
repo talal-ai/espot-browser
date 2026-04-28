@@ -8,6 +8,7 @@ import type { Proxy, ProxyCreate, ProxyUpdate, ApiResponse } from '../types/api.
 
 // Check if running in Electron
 const isElectron = typeof window !== 'undefined' && window.electronAPI;
+let lastActivatedProxyId: string | null = null;
 
 class ProxiesService {
   /**
@@ -104,6 +105,17 @@ class ProxiesService {
     password?: string;
   }>> {
     try {
+      if (lastActivatedProxyId === proxyId) {
+        return {
+          success: true,
+          data: {
+            success: true,
+            message: 'Proxy already active',
+            proxy_id: proxyId,
+          } as any,
+        };
+      }
+
       // Step 1: Activate on backend (for backend API calls)
       const backendResponse = await apiService.post(`/api/admin/proxies/${proxyId}/activate-global`);
 
@@ -113,7 +125,6 @@ class ProxiesService {
 
       // Step 2: If running in Electron, activate proxy for browser traffic
       if (isElectron && window.electronAPI) {
-
         const proxyConfig = {
           protocol: backendResponse.data.protocol,
           host: backendResponse.data.host,
@@ -125,15 +136,15 @@ class ProxiesService {
         const electronResponse = await window.electronAPI.proxy.activate(proxyConfig);
 
         if (!electronResponse.success) {
+          await apiService.post('/api/admin/proxies/deactivate-global');
           return {
             success: false,
-            error: `Backend activated but Electron failed: ${electronResponse.error}`,
+            error: `Proxy rollback completed. Electron activation failed: ${electronResponse.error}`,
           } as any;
         }
-
-      } else {
       }
 
+      lastActivatedProxyId = proxyId;
       return backendResponse;
 
     } catch (error: any) {
@@ -153,20 +164,23 @@ class ProxiesService {
     message: string;
   }>> {
     try {
+      if (!lastActivatedProxyId) {
+        return { success: true, data: { success: true, message: 'Proxy already inactive' } as any };
+      }
+
       // Step 1: Deactivate on backend
       const backendResponse = await apiService.post('/api/admin/proxies/deactivate-global');
 
       // Step 2: If running in Electron, deactivate proxy for browser traffic
       if (isElectron && window.electronAPI) {
-
         const electronResponse = await window.electronAPI.proxy.deactivate();
 
         if (!electronResponse.success) {
           // Continue anyway - at least backend is deactivated
-        } else {
         }
       }
 
+      lastActivatedProxyId = null;
       return backendResponse;
 
     } catch (error: any) {
@@ -267,6 +281,10 @@ class ProxiesService {
         error: error.message || 'Failed to get status',
       };
     }
+  }
+
+  resetProxyActivationCache(): void {
+    lastActivatedProxyId = null;
   }
 
   // =========================================================================

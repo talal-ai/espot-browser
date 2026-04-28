@@ -3,6 +3,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { applySpoofingProfile, createSpoofedWindow, FingerprintProfile } from './fingerprint-injector';
 import axios from 'axios';
+import {
+  PROXY_IPC_CHANNELS,
+  REQUIRED_PROXY_CHANNELS,
+  type ProxyConfig,
+  type ProxyIpcChannel,
+  type ProxyIpcResponse,
+} from '../shared/proxy-ipc-contract';
 
 // Get __dirname equivalent in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -37,6 +44,94 @@ const windowIcon = rawAppIcon.isEmpty() ? undefined : rawAppIcon;
 
 // Global reference to mainWindow to prevent garbage collection
 let mainWindow: BrowserWindow | null = null;
+let activeGlobalProxy: ProxyConfig | null = null;
+const userProxySessions = new Map<string, ProxyConfig>();
+const registeredProxyChannels = new Set<ProxyIpcChannel>();
+
+const normalizeProxyConfig = (input: any): ProxyConfig => ({
+  protocol: String(input?.protocol || 'http').toLowerCase(),
+  host: String(input?.host || '').trim(),
+  port: Number(input?.port || 0),
+  username: input?.username ? String(input.username) : undefined,
+  password: input?.password ? String(input.password) : undefined,
+});
+
+const validateProxyConfig = (config: ProxyConfig): string | null => {
+  if (!config.host) return 'Proxy host is required';
+  if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) return 'Proxy port is invalid';
+  if (!['http', 'https', 'socks4', 'socks5'].includes(config.protocol)) return `Unsupported proxy protocol: ${config.protocol}`;
+  return null;
+};
+
+const toProxyRules = (config: ProxyConfig): string => {
+  const auth = config.username && config.password ? `${config.username}:${config.password}@` : '';
+  return `${config.protocol}://${auth}${config.host}:${config.port}`;
+};
+
+const registerProxyHandler = (
+  channel: ProxyIpcChannel,
+  handler: (...args: any[]) => Promise<any> | any
+) => {
+  ipcMain.handle(channel, handler as any);
+  registeredProxyChannels.add(channel);
+};
+
+const verifyProxyContractRegistration = () => {
+  const missing = REQUIRED_PROXY_CHANNELS.filter((channel) => !registeredProxyChannels.has(channel));
+  if (missing.length > 0) {
+    const error = `[ESPOT] Missing proxy IPC handlers: ${missing.join(', ')}`;
+    console.error(error);
+    throw new Error(error);
+  }
+};
+
+const applyProxyToDefaultSession = async (config: ProxyConfig): Promise<ProxyIpcResponse> => {
+  const validationError = validateProxyConfig(config);
+  if (validationError) {
+    return { success: false, error: validationError };
+  }
+
+  const proxyRules = toProxyRules(config);
+  await mainWindow?.webContents?.session?.setProxy({
+    proxyRules,
+    proxyBypassRules: '<local>',
+  });
+  activeGlobalProxy = config;
+  return { success: true, message: 'Proxy activated', config };
+};
+
+const clearDefaultSessionProxy = async (): Promise<ProxyIpcResponse> => {
+  await mainWindow?.webContents?.session?.setProxy({
+    mode: 'direct',
+  });
+  activeGlobalProxy = null;
+  return { success: true, message: 'Proxy deactivated' };
+};
+
+const getProxyVerification = async (): Promise<ProxyIpcResponse> => {
+  try {
+    const session = mainWindow?.webContents?.session;
+    if (!session) return { success: false, error: 'Session is not available' };
+
+    const resolved = await session.resolveProxy('https://api.ipify.org?format=json');
+    const isUsingProxy = resolved && !resolved.startsWith('DIRECT');
+
+    return {
+      success: true,
+      data: {
+        working: Boolean(isUsingProxy),
+        currentIp: undefined,
+        proxiedIP: undefined,
+        error: isUsingProxy ? undefined : 'Proxy not currently routing this session',
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+};
 
 // Create the main window
 function createMainWindow() {
@@ -352,6 +447,71 @@ function setupIpcHandlers() {
     return { success: true, data: { status: 'success', latency: 120 } };
   });
 
+  registerProxyHandler(PROXY_IPC_CHANNELS.activate, async (_, proxyConfig: ProxyConfig) => {
+    const normalized = normalizeProxyConfig(proxyConfig);
+    if (
+      activeGlobalProxy &&
+      JSON.stringify(activeGlobalProxy) === JSON.stringify(normalized)
+    ) {
+      return { success: true, message: 'Proxy already active', config: activeGlobalProxy };
+    }
+    return applyProxyToDefaultSession(normalized);
+  });
+
+  registerProxyHandler(PROXY_IPC_CHANNELS.deactivate, async () => {
+    if (!activeGlobalProxy) {
+      return { success: true, message: 'Proxy already inactive' };
+    }
+    return clearDefaultSessionProxy();
+  });
+
+  registerProxyHandler(PROXY_IPC_CHANNELS.getStatus, async () => ({
+    success: true,
+    data: {
+      isActive: Boolean(activeGlobalProxy),
+      config: activeGlobalProxy,
+    },
+  }));
+
+  registerProxyHandler(PROXY_IPC_CHANNELS.verify, async () => getProxyVerification());
+
+  registerProxyHandler(PROXY_IPC_CHANNELS.activateForUser, async (_, userId: string, proxyConfig: ProxyConfig) => {
+    const normalized = normalizeProxyConfig(proxyConfig);
+    const validationError = validateProxyConfig(normalized);
+    if (validationError) return { success: false, error: validationError, userId };
+
+    userProxySessions.set(userId, normalized);
+    if (!activeGlobalProxy) {
+      await applyProxyToDefaultSession(normalized);
+    }
+    return { success: true, message: 'User proxy activated', userId, config: normalized };
+  });
+
+  registerProxyHandler(PROXY_IPC_CHANNELS.deactivateForUser, async (_, userId: string) => {
+    userProxySessions.delete(userId);
+    if (!activeGlobalProxy && userProxySessions.size === 0) {
+      await clearDefaultSessionProxy();
+    }
+    return { success: true, message: 'User proxy deactivated', userId };
+  });
+
+  registerProxyHandler(PROXY_IPC_CHANNELS.getUserStatus, async (_, userId: string) => ({
+    success: true,
+    data: {
+      isActive: userProxySessions.has(userId),
+      config: userProxySessions.get(userId) || null,
+    },
+  }));
+
+  registerProxyHandler(PROXY_IPC_CHANNELS.getAllUserSessions, async () => ({
+    success: true,
+    data: Array.from(userProxySessions.entries()).map(([userId, config]) => ({
+      userId,
+      hasProxy: true,
+      proxyHost: config.host,
+    })),
+  }));
+
   // System API
   ipcMain.handle('system:getStats', async () => {
     // TODO: Implement API call to backend
@@ -362,6 +522,8 @@ function setupIpcHandlers() {
     // TODO: Implement API call to backend
     return { success: true, data: { status: 'healthy' } };
   });
+
+  verifyProxyContractRegistration();
 }
 
 // Handle uncaught exceptions

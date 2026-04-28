@@ -57,3 +57,14 @@ git push origin v1.0.11
 ```
 
 After the workflow finishes (a few minutes), the release will be **published** (not draft) and “Check for updates” in the app should work.
+
+---
+
+## Proxy Smoke Test (Packaged Build)
+
+Before final signoff, run a packaged build and verify:
+
+- Admin can activate a proxy from `Proxy Management`.
+- UI shows active backend + Electron proxy status.
+- `Current IP` changes after activation and returns after deactivation.
+- No IPC errors like `No handler registered for proxy:*` appear in app logs.

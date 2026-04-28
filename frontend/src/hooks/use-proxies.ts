@@ -264,35 +264,10 @@ export function useProxies(): UseProxiesReturn {
   const activateGlobally = useCallback(
     async (proxyId: string): Promise<ApiResponse<any>> => {
       try {
-        // Step 1: Activate proxy on backend (for API calls)
+        // Single orchestration path lives in proxiesService
         const response = await proxiesService.activateProxyGlobally(proxyId);
 
         if (response.success) {
-          // Step 2: Activate proxy in Electron (for ALL browser traffic including users)
-          // @ts-ignore - electronAPI is defined in window by preload script
-          if (window.electronAPI?.proxy?.activate) {
-            const responseData = response.data as any; // Type assertion for flexibility
-            const proxyConfig = {
-              protocol: responseData?.protocol || 'http',
-              host: responseData?.proxy_host || responseData?.host,
-              port: responseData?.proxy_port || responseData?.port,
-              username: responseData?.username,
-              password: responseData?.password,
-            };
-
-            // @ts-ignore
-            const electronResult = await window.electronAPI.proxy.activate(proxyConfig);
-            
-            if (!electronResult.success) {
-              toast({
-                variant: 'destructive',
-                title: 'Partial Activation',
-                description: 'Backend proxy activated but browser proxy failed. Users may not be proxied.',
-              });
-            } else {
-            }
-          }
-
           toast({
             title: '✅ Proxy Activated Globally',
             description: `ALL traffic (backend + browser + users) now routes through ${response.data?.proxy_host}:${response.data?.proxy_port}`,
@@ -328,26 +303,10 @@ export function useProxies(): UseProxiesReturn {
   const deactivateGlobally = useCallback(
     async (): Promise<ApiResponse<any>> => {
       try {
-        // Step 1: Deactivate backend proxy
+        // Single orchestration path lives in proxiesService
         const response = await proxiesService.deactivateProxyGlobally();
 
         if (response.success) {
-          // Step 2: Deactivate Electron browser proxy
-          // @ts-ignore - electronAPI is defined in window by preload script
-          if (window.electronAPI?.proxy?.deactivate) {
-            // @ts-ignore
-            const electronResult = await window.electronAPI.proxy.deactivate();
-            
-            if (!electronResult.success) {
-              toast({
-                variant: 'destructive',
-                title: 'Partial Deactivation',
-                description: 'Backend proxy deactivated but browser proxy failed.',
-              });
-            } else {
-            }
-          }
-
           toast({
             title: '✅ Proxy Deactivated',
             description: 'ALL traffic (backend + browser + users) now uses direct connection',

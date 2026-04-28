@@ -11,6 +11,7 @@ import GlassCard from '../../components/common/GlassCard';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import { useProxies } from '../../hooks/use-proxies';
 import { useProxySettings } from '../../hooks/use-proxy-settings';
+import { proxiesService } from '../../services/proxies.service';
 import { Badge } from '../../components/ui/badge';
 import PageSkeleton from '../../components/common/PageSkeleton';
 
@@ -29,6 +30,8 @@ const Proxies = () => {
   const [proxyEndpoint, setProxyEndpoint] = useState(null);
   const [verifying, setVerifying] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [electronProxyStatus, setElectronProxyStatus] = useState({ isActive: false, config: null });
+  const [lastProxyError, setLastProxyError] = useState(null);
   
   // Bulk import/export state
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -54,6 +57,15 @@ const Proxies = () => {
       const response = await getGlobalStatus();
       if (response.success) {
         setGlobalProxyStatus(response.data);
+      }
+      const electronStatus = await proxiesService.getElectronProxyStatus();
+      if (electronStatus.success) {
+        setElectronProxyStatus({
+          isActive: Boolean(electronStatus.isActive),
+          config: electronStatus.config || null,
+        });
+      } else if (electronStatus.error) {
+        setLastProxyError(electronStatus.error);
       }
     };
     loadStatus();
@@ -273,7 +285,11 @@ http:45.33.32.156:3128::`;
         const result = await window.electronAPI.proxy.verify();
         if (result.success && result.data?.proxiedIP) {
           setCurrentIPAddress(result.data.proxiedIP);
+          setLastProxyError(null);
           return result.data.proxiedIP;
+        }
+        if (!result.success && result.error) {
+          setLastProxyError(result.error);
         }
       }
       const resp = await fetch('https://api.ipify.org?format=json');
@@ -284,6 +300,7 @@ http:45.33.32.156:3128::`;
       }
       return null;
     } catch (error) {
+      setLastProxyError(error?.message || 'Proxy verification failed');
       return null;
     } finally {
       setVerifying(false);
@@ -748,6 +765,15 @@ http:45.33.32.156:3128::`;
                     ? '✅ ALL traffic (Backend API + Browser + All Users) routing through active proxy'
                     : '🔵 All traffic uses direct connection (no proxy)'}
                 </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  Electron proxy: {electronProxyStatus.isActive ? 'Active' : 'Inactive'}
+                  {electronProxyStatus.config?.host ? ` (${electronProxyStatus.config.host}:${electronProxyStatus.config.port})` : ''}
+                </p>
+                {lastProxyError && (
+                  <p className="text-xs text-red-500 mb-3">
+                    Last proxy error: {lastProxyError}
+                  </p>
+                )}
 
                 {/* Current IP Display */}
                 <div className="flex items-center gap-4 flex-wrap">
