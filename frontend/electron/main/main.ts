@@ -1184,7 +1184,11 @@ function setupIpcHandlers() {
     try {
       console.log(`🚀 Launching service: ${launchData.url}`);
 
+      // FIX: Service session key is now per-user-per-service so two users don't share a session
       const serviceKey = `${launchData.userId || 'common'}-${launchData.serviceId}`;
+      // FIX: Partition is also per-user so each user gets an isolated session with their own proxy
+      const servicePartition = `persist:service-${launchData.userId || 'common'}-${launchData.serviceId}`;
+
       const existingWindow = activeServiceWindows.get(serviceKey);
       if (existingWindow && !existingWindow.isDestroyed()) {
         console.log(`[${launchData.serviceId}] ℹ️ Service already running, refocusing...`);
@@ -1213,7 +1217,7 @@ function setupIpcHandlers() {
       }
 
       // Create isolated browser window - STARTS HIDDEN
-      // Create a shell window — the service site loads inside a <webview> with an address bar
+      // FIX: Window now uses servicePartition so the proxy applied to it below actually takes effect
       let serviceWindow: BrowserWindow;
 
       serviceWindow = new BrowserWindow({
@@ -1228,6 +1232,7 @@ function setupIpcHandlers() {
           webviewTag: true,   // shell contains a <webview> element showing the service site
           spellcheck: false,
           devTools: isDev,
+          partition: servicePartition, // FIX: explicitly bind window to its named session
         },
       });
 
@@ -1236,7 +1241,7 @@ function setupIpcHandlers() {
       if (profile) {
         spoofingPreloadPath = await applySpoofingToPartition(
           profile,
-          `persist:service-${launchData.serviceId}`
+          servicePartition  // FIX: use per-user partition
         );
         console.log('[ESPOT] ✅ Fingerprint spoofing applied to service session');
       } else {
@@ -1273,9 +1278,10 @@ function setupIpcHandlers() {
       
       if (proxyToApply) {
         const proxyRules = `${proxyToApply.protocol}://${proxyToApply.host}:${proxyToApply.port}`;
-        const ses = session.fromPartition(`persist:service-${launchData.serviceId}`);
-        await ses.setProxy({ proxyRules, proxyBypassRules: '<local>' });
-        console.log(`[${launchData.serviceId}] 🛡️ Proxy applied to service window`);
+        // FIX: Apply proxy to the SAME partition the service window uses (servicePartition)
+        const ses = session.fromPartition(servicePartition);
+        await ses.setProxy({ proxyRules, proxyBypassRules: PROXY_BYPASS_LIST });
+        console.log(`[${launchData.serviceId}] 🛡️ Proxy applied to service window (${proxyToApply.host}:${proxyToApply.port})`);
       }
 
       // Track states
@@ -1436,7 +1442,7 @@ function setupIpcHandlers() {
         const shellPath     = fs.existsSync(shellInDist) ? shellInDist : shellInSource;
         console.log(`[${launchData.serviceId}] 🌐 Loading shell (URL bar ON): ${launchData.url}`);
         await serviceWindow.loadFile(shellPath, {
-          query: { url: launchData.url, partition: `persist:service-${launchData.serviceId}` },
+          query: { url: launchData.url, partition: servicePartition },  // FIX: pass per-user partition to webview
         });
 
       } else {
@@ -2049,19 +2055,18 @@ async function applyProxyToUserSession(userId: string, proxyConfig: ProxyConfig)
     const userSession = getUserSession(userId);
     const proxyRules = `${proxyConfig.protocol}://${proxyConfig.host}:${proxyConfig.port}`;
 
-    // 1. Apply to user's specific partition
+    // 1. Apply to user's specific partition (use full bypass list — same as global proxy)
     const userSes = session.fromPartition(userSession.sessionPartition);
     await userSes.setProxy({
       proxyRules: proxyRules,
-      proxyBypassRules: '<local>'
+      proxyBypassRules: PROXY_BYPASS_LIST  // FIX: was '<local>' — missing CDN/Google bypass causing slowness
     });
 
-    // 2. CRITICAL: Also apply to DEFAULT session (like admin does)
-    // This ensures ALL child windows are proxied, not just ones with explicit partition
+    // 2. Also apply to DEFAULT session so child windows opened without explicit partition are proxied
     const defaultSes = session.defaultSession;
     await defaultSes.setProxy({
       proxyRules: proxyRules,
-      proxyBypassRules: '<local>'
+      proxyBypassRules: PROXY_BYPASS_LIST
     });
 
     // Store config
@@ -2070,10 +2075,8 @@ async function applyProxyToUserSession(userId: string, proxyConfig: ProxyConfig)
 
     console.log(`✅ Proxy activated for user ${userId}`);
     console.log(`   Protocol: ${proxyConfig.protocol}`);
-    console.log(`   Host: ${proxyConfig.host}`);
-    console.log(`   Port: ${proxyConfig.port}`);
-    console.log(`   Applied to: DEFAULT session + user partition`);
-    console.log(`   All browser windows will now use this proxy`);
+    console.log(`   Host: ${proxyConfig.host}:${proxyConfig.port}`);
+    console.log(`   Bypass: ${PROXY_BYPASS_LIST}`);
 
   } catch (error: any) {
     console.error(`❌ Failed to apply proxy to user ${userId}:`, error);

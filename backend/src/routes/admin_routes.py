@@ -1047,10 +1047,6 @@ async def get_system_stats(admin=Depends(get_current_admin)):
         logger.error(f"Error getting system stats: {e}")
         raise HTTPException(status_code=500, detail="Failed to get system stats")
 
-    except Exception as e:
-        logger.error(f"Error getting system stats: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get system stats")
-
 @router.get("/metrics", response_model=DashboardCharts)
 async def get_dashboard_metrics(admin=Depends(get_current_admin)):
     """Get dashboard charts data"""

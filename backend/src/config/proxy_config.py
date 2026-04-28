@@ -52,7 +52,8 @@ class GlobalProxyConfig:
             # Apply environment-level proxy so libraries respect it automatically
             os.environ['HTTP_PROXY'] = self.active_proxy_url
             os.environ['HTTPS_PROXY'] = self.active_proxy_url
-            os.environ['NO_PROXY'] = 'localhost,127.0.0.1'
+            # Exclude localhost AND Supabase from being proxied — backend DB calls must go direct
+            os.environ['NO_PROXY'] = 'localhost,127.0.0.1,.supabase.co,supabase.co,supabase.in'
             
             return True
             
