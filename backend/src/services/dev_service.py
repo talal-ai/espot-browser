@@ -186,7 +186,7 @@ class DevService:
         """Update user (mock)"""
         for i, user in enumerate(self.mock_users):
             if user.id == user_id:
-                update_data = user_data.dict(exclude_unset=True)
+                update_data = user_data.model_dump(exclude_unset=True)
                 update_data["updated_at"] = datetime.utcnow().isoformat()
                 updated_user = user.copy(update=update_data)
                 self.mock_users[i] = updated_user
@@ -311,22 +311,40 @@ class DevService:
 
     async def get_user_services(self, user_id: str) -> list:
         result = []
+        seen = set()
         for rel in self.mock_user_services:
-            if rel["user_id"] == user_id:
-                svc = next((s for s in self.mock_services if s["id"] == rel["service_id"]), None)
-                if svc:
-                    result.append(svc)
+            if rel["user_id"] != user_id:
+                continue
+            sid = rel["service_id"]
+            if sid in seen:
+                continue
+            base = next((s for s in self.mock_services if s["id"] == sid), None)
+            if not base:
+                continue
+            svc = dict(base)
+            svc["assigned_at"] = rel.get("created_at")
+            if rel.get("expires_at") is not None:
+                svc["expires_at"] = rel["expires_at"]
+            svc["assignment_source"] = "direct"
+            result.append(svc)
+            seen.add(sid)
         return result
 
-    async def assign_service_to_user(self, service_id: str, user_id: str, assigned_by: str | None = None) -> dict:
-        exists = any(r for r in self.mock_user_services if r["user_id"] == user_id and r["service_id"] == service_id)
-        if exists:
-            raise Exception("duplicate assignment")
+    async def assign_service_to_user(self, service_id: str, user_id: str, assigned_by: str | None = None, expires_at=None) -> dict:
+        for i, r in enumerate(self.mock_user_services):
+            if r["user_id"] == user_id and r["service_id"] == service_id:
+                r = dict(r)
+                r["expires_at"] = expires_at.isoformat() if expires_at else None
+                if assigned_by:
+                    r["assigned_by"] = assigned_by
+                self.mock_user_services[i] = r
+                return r
         rel = {
             "id": f"usvc-{len(self.mock_user_services) + 1}",
             "user_id": user_id,
             "service_id": service_id,
             "assigned_by": assigned_by,
+            "expires_at": expires_at.isoformat() if expires_at else None,
             "created_at": datetime.utcnow().isoformat(),
         }
         self.mock_user_services.append(rel)
@@ -427,12 +445,21 @@ class DevService:
                     proxy_copy["assigned_at"] = rel["created_at"]
                     proxy_copy["is_default"] = rel.get("is_default", False)
                     results.append(proxy_copy)
+        results.sort(
+            key=lambda item: (bool(item.get("is_default", False)), item.get("assigned_at") or ""),
+            reverse=True,
+        )
         return results
 
     async def assign_proxy_to_user(self, proxy_id: str, user_id: str, assigned_by: Optional[str] = None, is_default: bool = False) -> Dict[str, Any]:
         """Assign a proxy to a user"""
         # Remove existing assignment if any
         self.mock_user_proxies = [r for r in self.mock_user_proxies if not (r["user_id"] == user_id and r["proxy_id"] == proxy_id)]
+
+        if is_default:
+            for rel in self.mock_user_proxies:
+                if rel["user_id"] == user_id:
+                    rel["is_default"] = False
         
         rel = {
             "id": str(uuid.uuid4()),

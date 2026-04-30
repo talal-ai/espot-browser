@@ -1930,15 +1930,20 @@ async function applyProxyToSession(proxyConfig: ProxyConfig): Promise<void> {
     console.log(`   Host: ${proxyConfig.host}`);
     console.log(`   Port: ${proxyConfig.port}`);
     console.log(`   Authentication: ${proxyConfig.username ? 'Yes' : 'No'}`);
-    // Apply same proxy to all existing user partition sessions
+    // Apply the global proxy only to user sessions that do not already have
+    // an explicit user-specific proxy configured.
     for (const [, userSession] of userSessions) {
+      if (userSession.proxyConfig) {
+        console.log(`   Preserved user-specific proxy for session ${userSession.userId}`);
+        continue;
+      }
+
       try {
         const userSes = session.fromPartition(userSession.sessionPartition);
         await userSes.setProxy({
           proxyRules,
           proxyBypassRules: PROXY_BYPASS_LIST
         });
-        userSession.proxyConfig = proxyConfig;
         console.log(`   Applied global proxy to user session ${userSession.userId}`);
       } catch (e) {
         console.warn(`   Failed to apply proxy to user session ${userSession.userId}:`, e);
@@ -1967,13 +1972,23 @@ async function deactivateProxy(): Promise<void> {
 
     console.log('✅ Proxy deactivated - using direct connection');
 
-    // Clear proxy on all user partition sessions
+    // Clear the global proxy from user partitions that are using the shared
+    // app-wide proxy, while preserving explicit user-specific proxy sessions.
     for (const [, userSession] of userSessions) {
       try {
         const userSes = session.fromPartition(userSession.sessionPartition);
-        await userSes.setProxy({ proxyRules: '' });
-        userSession.proxyConfig = null;
-        console.log(`   Cleared proxy for user session ${userSession.userId}`);
+
+        if (userSession.proxyConfig) {
+          const userProxyRules = `${userSession.proxyConfig.protocol}://${userSession.proxyConfig.host}:${userSession.proxyConfig.port}`;
+          await userSes.setProxy({
+            proxyRules: userProxyRules,
+            proxyBypassRules: PROXY_BYPASS_LIST,
+          });
+          console.log(`   Restored user-specific proxy for session ${userSession.userId}`);
+        } else {
+          await userSes.setProxy({ proxyRules: '' });
+          console.log(`   Cleared proxy for user session ${userSession.userId}`);
+        }
       } catch (e) {
         console.warn(`   Failed to clear proxy for user session ${userSession.userId}:`, e);
       }
@@ -2046,9 +2061,7 @@ function getUserSession(userId: string): UserSession {
 /**
  * Apply proxy to a specific user's session (isolated from other users)
  * This allows different users to use different proxies simultaneously
- * 
- * CRITICAL FIX: Also apply to default session so ALL windows are proxied
- * (matches admin behavior - any child window uses default session)
+ * without mutating the shared app-wide proxy state.
  */
 async function applyProxyToUserSession(userId: string, proxyConfig: ProxyConfig): Promise<void> {
   try {
@@ -2062,16 +2075,8 @@ async function applyProxyToUserSession(userId: string, proxyConfig: ProxyConfig)
       proxyBypassRules: PROXY_BYPASS_LIST  // FIX: was '<local>' — missing CDN/Google bypass causing slowness
     });
 
-    // 2. Also apply to DEFAULT session so child windows opened without explicit partition are proxied
-    const defaultSes = session.defaultSession;
-    await defaultSes.setProxy({
-      proxyRules: proxyRules,
-      proxyBypassRules: PROXY_BYPASS_LIST
-    });
-
     // Store config
     userSession.proxyConfig = proxyConfig;
-    activeProxyConfig = proxyConfig; // Set global config so service windows get it
 
     console.log(`✅ Proxy activated for user ${userId}`);
     console.log(`   Protocol: ${proxyConfig.protocol}`);
@@ -2085,8 +2090,7 @@ async function applyProxyToUserSession(userId: string, proxyConfig: ProxyConfig)
 }
 
 /**
- * Deactivate proxy for a specific user's session
- * CRITICAL: Also clear from default session
+ * Deactivate proxy for a specific user's session.
  */
 async function deactivateUserProxy(userId: string): Promise<void> {
   try {
@@ -2099,13 +2103,8 @@ async function deactivateUserProxy(userId: string): Promise<void> {
       userSession.proxyConfig = null;
     }
 
-    // CRITICAL: Also clear from DEFAULT session
-    const defaultSes = session.defaultSession;
-    await defaultSes.setProxy({ proxyRules: '' });
-    activeProxyConfig = null; // Clear global config
-
     console.log(`✅ Proxy deactivated for user ${userId}`);
-    console.log(`   Cleared from: DEFAULT session + user partition`);
+    console.log(`   Cleared from: user partition only`);
 
   } catch (error: any) {
     console.error(`❌ Failed to deactivate proxy for user ${userId}:`, error);

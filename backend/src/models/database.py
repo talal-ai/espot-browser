@@ -5,7 +5,7 @@ Production-ready database schemas and models
 
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 
 class UserRole(str, Enum):
@@ -47,6 +47,19 @@ class FingerprintType(str, Enum):
 # User Models
 _EMAIL_PATTERN = r"^[^@]+@[^@]+\.[^@]+$"
 
+# bcrypt (used for password_hash) only considers the first 72 bytes of the password.
+BCRYPT_MAX_PASSWORD_BYTES = 72
+
+
+def assert_password_within_bcrypt_limit(password: str, *, field: str = "password") -> str:
+    byte_len = len(password.encode("utf-8"))
+    if byte_len > BCRYPT_MAX_PASSWORD_BYTES:
+        raise ValueError(
+            f"{field} must be at most {BCRYPT_MAX_PASSWORD_BYTES} bytes (bcrypt limit); "
+            f"got {byte_len} bytes. Use a shorter password or fewer multi-byte characters."
+        )
+    return password
+
 
 class UserBase(BaseModel):
     """Base user model (email relaxed so DB rows / legacy data still deserialize)."""
@@ -63,6 +76,11 @@ class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
     email: str = Field(..., pattern=_EMAIL_PATTERN)
 
+    @field_validator("password")
+    @classmethod
+    def _password_bcrypt_byte_limit(cls, v: str) -> str:
+        return assert_password_within_bcrypt_limit(v)
+
 class UserUpdate(BaseModel):
     """User update model"""
     username: Optional[str] = Field(None, min_length=3, max_length=50)
@@ -73,6 +91,13 @@ class UserUpdate(BaseModel):
     status: Optional[UserStatus] = None
     max_devices: Optional[int] = Field(None, ge=1, description="Maximum concurrent devices/sessions allowed")
     browser_shell_enabled: Optional[bool] = None
+
+    @field_validator("password")
+    @classmethod
+    def _password_bcrypt_byte_limit(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        return assert_password_within_bcrypt_limit(v)
 
 class User(UserBase):
     """User model"""
@@ -310,6 +335,7 @@ class Service(BaseModel):
 class ServiceWithAssignment(Service):
     assigned_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
+    assignment_source: Optional[str] = None  # e.g. "direct", "group:TeamName"
 
 class UserService(BaseModel):
     id: str

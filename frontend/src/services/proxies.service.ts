@@ -164,10 +164,6 @@ class ProxiesService {
     message: string;
   }>> {
     try {
-      if (!lastActivatedProxyId) {
-        return { success: true, data: { success: true, message: 'Proxy already inactive' } as any };
-      }
-
       // Step 1: Deactivate on backend
       const backendResponse = await apiService.post('/api/admin/proxies/deactivate-global');
 

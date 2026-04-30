@@ -158,30 +158,29 @@ const Sidebar = ({ isOpen, onClose }) => {
           })}
         </nav>
 
-        {/* Update Check Button (Admin Only) */}
-        {isAdmin && (
-          <div className="px-3 pb-2">
-            <button
-              onClick={() => {
-                if (window.electronAPI?.updater?.checkForUpdates) {
-                  try {
-                    sessionStorage.setItem('manualUpdateCheck', 'true');
-                    window.electronAPI.updater.checkForUpdates();
-                    toast({ title: 'Checking for updates...', description: 'Please wait while we check for the latest version.' });
-                  } catch (err) {
-                    toast({ title: 'Update Check Failed', description: 'Could not connect to update server.', variant: 'destructive' });
-                  }
-                } else {
-                  toast({ title: 'Error', description: 'Update API not available. Try restarting the app.', variant: 'destructive' });
+        {/* Update check — desktop (Electron); same behavior for admin and standard users */}
+        <div className="px-3 pb-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (window.electronAPI?.updater?.checkForUpdates) {
+                try {
+                  sessionStorage.setItem('manualUpdateCheck', 'true');
+                  window.electronAPI.updater.checkForUpdates();
+                  toast({ title: 'Checking for updates...', description: 'Please wait while we check for the latest version.' });
+                } catch (err) {
+                  toast({ title: 'Update Check Failed', description: 'Could not connect to update server.', variant: 'destructive' });
                 }
-              }}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800/50 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors border border-transparent dark:border-gray-700/50"
-            >
-              <RefreshCw className="w-4 h-4" />
-              <span className="font-medium">Check for Updates</span>
-            </button>
-          </div>
-        )}
+              } else {
+                toast({ title: 'Error', description: 'Update API not available. Try restarting the app.', variant: 'destructive' });
+              }
+            }}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800/50 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors border border-transparent dark:border-gray-700/50"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span className="font-medium">Check for Updates</span>
+          </button>
+        </div>
 
         {/* Footer - Compact User Profile & Logout */}
         <div className="p-3">

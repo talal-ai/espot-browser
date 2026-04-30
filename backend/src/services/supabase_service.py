@@ -40,12 +40,10 @@ class SupabaseService:
             return await dev_service.create_user(user_data)
         
         try:
-            # Hash password before storing
-            from passlib.context import CryptContext
-            pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-            hashed_password = pwd_context.hash(user_data.password)
-            
-            user_dict = user_data.dict()
+            from src.auth.password_hashing import hash_bcrypt
+            hashed_password = hash_bcrypt(user_data.password)
+
+            user_dict = user_data.model_dump()
             user_dict.pop("password", None)
             user_dict["password_hash"] = hashed_password
             user_dict["created_at"] = datetime.utcnow().isoformat()
@@ -68,7 +66,7 @@ class SupabaseService:
             return await dev_service.create_user(user_data)
         
         try:
-            user_dict = user_data.dict()
+            user_dict = user_data.model_dump()
             user_dict.pop("password", None)
             user_dict["password_hash"] = password_hash
             user_dict["created_at"] = datetime.utcnow().isoformat()
@@ -196,13 +194,14 @@ class SupabaseService:
     async def update_user(self, user_id: str, user_data: UserUpdate) -> Optional[User]:
         """Update user"""
         try:
-            update_data = user_data.dict(exclude_unset=True)
-            
-            if "password" in update_data:
-                from passlib.context import CryptContext
-                pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-                update_data["password_hash"] = pwd_context.hash(update_data.pop("password"))
-                
+            update_data = user_data.model_dump(exclude_unset=True)
+            raw_pw = update_data.pop("password", None)
+            if raw_pw:
+                from src.auth.password_hashing import hash_bcrypt
+                from src.models.database import assert_password_within_bcrypt_limit
+                assert_password_within_bcrypt_limit(raw_pw)
+                update_data["password_hash"] = hash_bcrypt(raw_pw)
+
             update_data["updated_at"] = datetime.utcnow().isoformat()
             
             response = self.admin_client.table("users").update(update_data).eq("id", user_id).execute()
@@ -1331,49 +1330,120 @@ class SupabaseService:
             logger.error(f"Error getting service {service_id}: {e}")
             raise
 
+    async def _get_service_row_admin(self, service_id: str) -> Optional[Dict[str, Any]]:
+        """Load a services row with service role (RLS-safe for server-side aggregation)."""
+        if self.is_dev_mode:
+            row = await dev_service.get_service(service_id)
+            return dict(row) if row else None
+        try:
+            response = self.admin_client.table("services").select("*").eq("id", service_id).limit(1).execute()
+            if response.data:
+                return dict(response.data[0])
+            return None
+        except Exception as e:
+            logger.error(f"Error loading service row {service_id}: {e}")
+            return None
+
+    async def _get_sub_service_row_admin(self, sub_service_id: str) -> Optional[Dict[str, Any]]:
+        if self.is_dev_mode:
+            row = await dev_service.get_sub_service(sub_service_id)
+            return dict(row) if row else None
+        try:
+            response = self.admin_client.table("sub_services").select("*").eq("id", sub_service_id).limit(1).execute()
+            if response.data:
+                return dict(response.data[0])
+            return None
+        except Exception as e:
+            logger.error(f"Error loading sub_service row {sub_service_id}: {e}")
+            return None
+
+    def _merge_assignment_into_service(
+        self,
+        base: Dict[str, Any],
+        *,
+        assigned_at: Any,
+        expires_at: Any,
+        assignment_source: str,
+    ) -> Dict[str, Any]:
+        """Copy service row and attach assignment fields (never mutate shared embed dicts)."""
+        out = dict(base)
+        out["assigned_at"] = assigned_at
+        if expires_at is not None:
+            out["expires_at"] = expires_at
+        else:
+            out.pop("expires_at", None)
+        out["assignment_source"] = assignment_source
+        return out
+
     async def get_user_services(self, user_id: str) -> List[Dict[str, Any]]:
-        """Get all services assigned to a user (direct + via groups)"""
+        """Get all services assigned to a user (direct + via groups).
+
+        Loads assignment rows first, then each `services` row via admin client. This avoids
+        PostgREST embed/RLS edge cases where nested `service` comes back null or rows are
+        dropped, which previously hid expired panels on the user app while admin still
+        showed assignment metadata from other queries.
+        """
         if self.is_dev_mode:
             return await dev_service.get_user_services(user_id)
         try:
-            results = []
-            seen_service_ids = set()
+            results: List[Dict[str, Any]] = []
+            seen_service_ids: set = set()
+            uid = str(user_id)
 
-            # 1. Direct Assignments
-            response = self.client.table("user_services")\
-                .select("created_at, expires_at, service:services(*)")\
-                .eq("user_id", user_id)\
+            # 1. Direct assignments: only link columns, then fetch service by id
+            rel_response = self.admin_client.table("user_services")\
+                .select("created_at, expires_at, service_id")\
+                .eq("user_id", uid)\
                 .execute()
-            
-            for row in (response.data or []):
-                svc = row.get("service")
-                if svc and svc["id"] not in seen_service_ids:
-                    svc["assigned_at"] = row.get("created_at")
-                    svc["expires_at"] = row.get("expires_at")
-                    svc["assignment_source"] = "direct"
-                    results.append(svc)
-                    seen_service_ids.add(svc["id"])
 
-            # 2. Group Assignments
-            # Get user's groups
-            user_groups_response = self.admin_client.table("user_groups").select("group_id").eq("user_id", user_id).execute()
+            for row in (rel_response.data or []):
+                sid = row.get("service_id")
+                if not sid or sid in seen_service_ids:
+                    continue
+                svc = await self._get_service_row_admin(sid)
+                if not svc:
+                    logger.warning("user_services references missing service_id=%s user_id=%s", sid, uid)
+                    continue
+                results.append(self._merge_assignment_into_service(
+                    svc,
+                    assigned_at=row.get("created_at"),
+                    expires_at=row.get("expires_at"),
+                    assignment_source="direct",
+                ))
+                seen_service_ids.add(sid)
+
+            # 2. Group assignments
+            user_groups_response = self.admin_client.table("user_groups").select("group_id").eq("user_id", uid).execute()
             group_ids = [item["group_id"] for item in (user_groups_response.data or [])]
 
             if group_ids:
-                # Get services for these groups
-                group_services_response = self.admin_client.table("group_services")\
-                    .select("assigned_at, group:groups(name), service:services(*)")\
-                    .in_("group_id", group_ids)\
-                    .execute()
-                
-                for row in (group_services_response.data or []):
-                    svc = row.get("service")
-                    if svc:
-                        if svc["id"] not in seen_service_ids:
-                            svc["assigned_at"] = row.get("assigned_at")
-                            svc["assignment_source"] = f"group:{row.get('group', {}).get('name')}"
-                            results.append(svc)
-                            seen_service_ids.add(svc["id"])
+                group_rows: List[Dict[str, Any]] = []
+                try:
+                    gs = self.admin_client.table("group_services")\
+                        .select("assigned_at, service_id, group:groups(name)")\
+                        .in_("group_id", group_ids)\
+                        .execute()
+                    group_rows = gs.data or []
+                except Exception as ge:
+                    logger.error("group_services select failed (check service_id FK): %s", ge)
+
+                for row in group_rows:
+                    sid = row.get("service_id")
+                    grp = row.get("group") or {}
+                    gname = grp.get("name") or "group"
+                    if not sid or sid in seen_service_ids:
+                        continue
+                    svc = await self._get_service_row_admin(sid)
+                    if not svc:
+                        logger.warning("group_services references missing service_id=%s", sid)
+                        continue
+                    results.append(self._merge_assignment_into_service(
+                        svc,
+                        assigned_at=row.get("assigned_at"),
+                        expires_at=None,
+                        assignment_source=f"group:{gname}",
+                    ))
+                    seen_service_ids.add(sid)
 
             return results
         except Exception as e:
@@ -1382,7 +1452,7 @@ class SupabaseService:
 
     async def assign_service_to_user(self, service_id: str, user_id: str, assigned_by: Optional[str] = None, expires_at: Optional[datetime] = None) -> Dict[str, Any]:
         if self.is_dev_mode:
-            return await dev_service.assign_service_to_user(service_id, user_id, assigned_by)
+            return await dev_service.assign_service_to_user(service_id, user_id, assigned_by, expires_at)
         try:
             payload = {"service_id": service_id, "user_id": user_id}
             if assigned_by:
@@ -1434,6 +1504,10 @@ class SupabaseService:
                     proxy["assigned_at"] = row.get("created_at")
                     proxy["is_default"] = row.get("is_default", False)
                     results.append(proxy)
+            results.sort(
+                key=lambda item: (bool(item.get("is_default", False)), item.get("assigned_at") or ""),
+                reverse=True,
+            )
             return results
         except Exception as e:
             logger.error(f"Error getting user proxies for {user_id}: {e}")
@@ -1444,6 +1518,12 @@ class SupabaseService:
         if self.is_dev_mode:
             return await dev_service.assign_proxy_to_user(proxy_id, user_id, assigned_by, is_default)
         try:
+            if is_default:
+                self.admin_client.table("user_proxies")\
+                    .update({"is_default": False})\
+                    .eq("user_id", user_id)\
+                    .execute()
+
             payload = {
                 "proxy_id": proxy_id,
                 "user_id": user_id,
@@ -1743,18 +1823,23 @@ class SupabaseService:
         if self.is_dev_mode:
             return await dev_service.get_user_sub_services(user_id)
         try:
-            response = self.client.table("user_sub_services").select(
-                "created_at, expires_at, sub_services(id, name, username, service_id, visibility, services(id, name, url, status, show_url_bar))"
-            ).eq("user_id", user_id).execute()
+            uid = str(user_id)
+            rel_response = self.admin_client.table("user_sub_services").select(
+                "created_at, expires_at, sub_service_id"
+            ).eq("user_id", uid).execute()
             results = []
-            for row in (response.data or []):
-                sub = row.get("sub_services")
-                if not sub:
+            for row in (rel_response.data or []):
+                sub_id = row.get("sub_service_id")
+                if not sub_id:
                     continue
-                svc = sub.pop("services", None) if isinstance(sub, dict) else None
-                url = svc.get("url") if svc else ""
-                status = svc.get("status", "active") if svc else "active"
-                show_url_bar = bool(svc.get("show_url_bar", False)) if svc else False
+                sub = await self._get_sub_service_row_admin(sub_id)
+                if not sub:
+                    logger.warning("user_sub_services references missing sub_service_id=%s user_id=%s", sub_id, uid)
+                    continue
+                parent = await self._get_service_row_admin(sub.get("service_id"))
+                url = parent.get("url", "") if parent else ""
+                status = parent.get("status", "active") if parent else "active"
+                show_url_bar = bool(parent.get("show_url_bar", False)) if parent else False
                 results.append({
                     "id": sub["id"],
                     "name": sub["name"],

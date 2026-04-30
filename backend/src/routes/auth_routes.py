@@ -5,7 +5,7 @@ Handles user authentication, registration, and OAuth
 
 from fastapi import APIRouter, HTTPException, Depends, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
 import logging
 import secrets
@@ -31,6 +31,12 @@ class SignupRequest(BaseModel):
     password: str
     username: str
 
+    @field_validator("password")
+    @classmethod
+    def _password_bcrypt_byte_limit(cls, v: str) -> str:
+        from src.models.database import assert_password_within_bcrypt_limit
+        return assert_password_within_bcrypt_limit(v, field="password")
+
 class AuthResponse(BaseModel):
     token: str
     user: dict
@@ -42,23 +48,19 @@ class UserResponse(BaseModel):
     role: str
     browser_shell_enabled: Optional[bool] = False
 
-from passlib.context import CryptContext
+from src.auth.password_hashing import hash_bcrypt, verify_bcrypt_or_legacy_sha256
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def hash_password(password: str) -> str:
-    """Hash password using bcrypt"""
-    return pwd_context.hash(password)
+    """Hash password using bcrypt (input must be ≤72 UTF-8 bytes)."""
+    from src.models.database import assert_password_within_bcrypt_limit
+    assert_password_within_bcrypt_limit(password)
+    return hash_bcrypt(password)
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify password using bcrypt"""
-    try:
-        return pwd_context.verify(plain_password, hashed_password)
-    except Exception:
-        # Fallback for old SHA-256 hashes if any
-        import hashlib
-        old_hash = hashlib.sha256(plain_password.encode()).hexdigest()
-        return old_hash == hashed_password
+    """Verify password (bcrypt or legacy SHA-256 hex)."""
+    return verify_bcrypt_or_legacy_sha256(plain_password, hashed_password)
 
 def generate_token() -> str:
     """Generate a secure random token"""

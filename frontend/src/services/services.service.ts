@@ -22,6 +22,12 @@ export interface Service {
   created_at?: string;
   updated_at?: string;
   assigned_at?: string;
+  /** ISO datetime when direct assignment ends; omitted for group-only access. */
+  expires_at?: string;
+  /** "direct" or "group:GroupName" from admin/user service lists. */
+  assignment_source?: string;
+  /** Present on unified user `/api/user/services` list. */
+  type?: 'service' | 'sub_service';
   credential?: Credential;
 }
 
@@ -31,6 +37,7 @@ export interface UserService {
   service_id: string;
   assigned_by?: string;
   created_at?: string;
+  expires_at?: string;
 }
 
 export interface ServiceCreateData {
@@ -62,6 +69,13 @@ export interface SubService {
   visibility?: string;
   created_at?: string;
   updated_at?: string;
+  url?: string;
+  status?: string;
+  assigned_at?: string;
+  expires_at?: string;
+  assignment_source?: string;
+  type?: string;
+  show_url_bar?: boolean;
 }
 
 export interface SubServiceCreateData {
@@ -93,9 +107,20 @@ class ServicesService {
     return apiService.get<any[]>(`/api/admin/services/${serviceId}/users`); // Manually constructing path as it might not be in API_ENDPOINTS yet
   }
 
-  async assignServiceToUser(serviceId: string, userId: string, assignedBy?: string, durationDays?: number): Promise<ApiResponse<UserService>> {
-    const payload: any = { assigned_by: assignedBy };
-    if (durationDays) payload.duration_days = durationDays;
+  /**
+   * Assign or renew a panel. Use either durationDays (UTC+days from server "now") or expiresAt (ISO end time, supports minutes for testing).
+   * When both are passed, expiresAt wins (matches backend).
+   */
+  async assignServiceToUser(
+    serviceId: string,
+    userId: string,
+    assignedBy?: string,
+    opts?: { durationDays?: number; expiresAt?: string }
+  ): Promise<ApiResponse<UserService>> {
+    const payload: Record<string, unknown> = {};
+    if (assignedBy) payload.assigned_by = assignedBy;
+    if (opts?.expiresAt) payload.expires_at = opts.expiresAt;
+    else if (opts?.durationDays != null) payload.duration_days = opts.durationDays;
     return apiService.post<UserService>(API_ENDPOINTS.services.assignToUser(userId, serviceId), payload);
   }
 
@@ -147,8 +172,14 @@ class ServicesService {
     return apiService.get<SubService[]>(API_ENDPOINTS.services.userSubServices(userId));
   }
 
-  async assignSubServiceToUser(subServiceId: string, userId: string, options?: { duration_days?: number }): Promise<ApiResponse<any>> {
-    const payload = options?.duration_days != null ? { duration_days: options.duration_days } : {};
+  async assignSubServiceToUser(
+    subServiceId: string,
+    userId: string,
+    options?: { duration_days?: number; expires_at?: string }
+  ): Promise<ApiResponse<any>> {
+    const payload: Record<string, unknown> = {};
+    if (options?.expires_at) payload.expires_at = options.expires_at;
+    else if (options?.duration_days != null) payload.duration_days = options.duration_days;
     return apiService.post(API_ENDPOINTS.services.assignSubServiceToUser(userId, subServiceId), payload);
   }
 

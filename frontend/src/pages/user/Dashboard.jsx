@@ -58,14 +58,12 @@ const UserDashboard = () => {
 
   const [now, setNow] = useState(new Date());
 
-  const filterLaunchableServices = (items) => {
-    const current = new Date();
-    return (items || []).filter((s) => {
-      if (s.status !== 'active') return false;
-      if (s.expires_at && new Date(s.expires_at) < current) return false;
-      return true;
-    });
-  };
+  const isServiceInactive = (s) => String(s.status || 'active').toLowerCase() === 'inactive';
+
+  /** Assigned panels to show (includes expired; excludes only explicit inactive). */
+  const filterVisibleAssigned = (items) => (items || []).filter((s) => !isServiceInactive(s));
+
+  const isAccessExpired = (s) => !!(s?.expires_at && new Date(s.expires_at) < new Date());
 
   useEffect(() => {
     const loadData = async () => {
@@ -83,7 +81,7 @@ const UserDashboard = () => {
           servicesService.getMyServices(),
           usersService.getUser(user.id),
         ]);
-        if (res.success) setUserServices(filterLaunchableServices(res.data));
+        if (res.success) setUserServices(filterVisibleAssigned(res.data));
         if (ures.success) setUserDetails(ures.data);
         // Show dashboard as soon as services + user details are ready (main content)
         if (isInitialLoad) setLoading(false);
@@ -264,6 +262,14 @@ const UserDashboard = () => {
       toast({ variant: 'destructive', title: 'Error', description: 'User not authenticated' });
       return;
     }
+    if (isAccessExpired(service)) {
+      toast({
+        variant: 'destructive',
+        title: 'Access expired',
+        description: 'Contact your administrator to renew access.',
+      });
+      return;
+    }
 
     setLaunching(service.id);
     try {
@@ -342,7 +348,7 @@ const UserDashboard = () => {
     try {
       if (user?.id) {
         const res = await servicesService.getMyServices();
-        if (res.success) setUserServices(filterLaunchableServices(res.data));
+        if (res.success) setUserServices(filterVisibleAssigned(res.data));
 
         const fpRes = await fingerprintsService.getMyProfiles();
         if (fpRes.success) {
@@ -397,7 +403,7 @@ const UserDashboard = () => {
         />
         <StatCard
           title="Active Services"
-          value={userServices.filter(s => s.status === 'active').length}
+          value={userServices.filter((s) => !isAccessExpired(s)).length}
           change="Ready to use"
           changeType="positive"
           icon={Activity}
@@ -648,12 +654,13 @@ const UserDashboard = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {userServices.slice(0, 6).map((s) => {
               const initial = (s.name || 'S').charAt(0).toUpperCase();
+              const expired = isAccessExpired(s);
 
               return (
-                <GlassCard key={s.id} hover>
-                  <div className="p-5">
+                <GlassCard key={s.id} hover={!expired} className={expired ? 'opacity-60' : ''}>
+                  <div className={`p-5 ${expired ? 'select-none' : ''}`}>
                     <div className="flex items-start gap-3 mb-4">
-                      <div className="w-12 h-12 rounded-xl bg-slate-600 dark:bg-slate-500 flex items-center justify-center flex-shrink-0">
+                      <div className={`w-12 h-12 rounded-xl bg-slate-600 dark:bg-slate-500 flex items-center justify-center flex-shrink-0 ${expired ? 'grayscale' : ''}`}>
                         <span className="text-xl font-semibold text-white select-none">{initial}</span>
                       </div>
                       <div className="flex-1 min-w-0">
@@ -661,7 +668,9 @@ const UserDashboard = () => {
                           {s.name}
                         </h3>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          Click launch to access securely
+                          {expired
+                            ? 'Access expired — contact your administrator to renew.'
+                            : 'Click launch to access securely'}
                         </p>
                       </div>
                     </div>
@@ -707,15 +716,18 @@ const UserDashboard = () => {
                     </div>
 
                     <Button
+                      type="button"
                       onClick={() => handleLaunch(s)}
-                      disabled={launching === s.id}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2"
+                      disabled={expired || launching === s.id}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2 disabled:opacity-60 disabled:pointer-events-none"
                     >
                       {launching === s.id ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
                           Launching...
                         </>
+                      ) : expired ? (
+                        <>Access expired</>
                       ) : (
                         <>
                           <Rocket className="w-4 h-4" />

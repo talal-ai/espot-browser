@@ -6,7 +6,7 @@ annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.12.0
 attrs==25.4.0
-bcrypt==5.0.0
+bcrypt==4.3.0
 bidict==0.23.1
 billiard==4.2.4
 cachetools==6.2.4
@@ -42,7 +42,6 @@ mdurl==0.1.2
 mmh3==5.2.0
 multidict==6.7.0
 packaging==25.0
-passlib==1.7.4
 postgrest==2.27.0
 prompt_toolkit==3.0.52
 propcache==0.4.1

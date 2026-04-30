@@ -140,11 +140,12 @@ async def assign_service_to_user(
         
         expires_at = None
         if body:
-            if body.duration_days:
+            # Prefer explicit end time (supports sub-day windows, e.g. QA) over day count.
+            if body.expires_at:
+                expires_at = body.expires_at
+            elif body.duration_days:
                 from datetime import datetime, timedelta
                 expires_at = datetime.utcnow() + timedelta(days=body.duration_days)
-            elif body.expires_at:
-                expires_at = body.expires_at
 
         assigned = await supabase_service.assign_service_to_user(
             service_id, 
@@ -487,11 +488,11 @@ async def assign_sub_service_to_user(
         admin_uuid = admin_id if isinstance(admin_id, str) and len(admin_id) == 36 else None
         expires_at = None
         if body:
-            if body.duration_days:
+            if body.expires_at:
+                expires_at = body.expires_at
+            elif body.duration_days:
                 from datetime import timedelta
                 expires_at = datetime.utcnow() + timedelta(days=body.duration_days)
-            elif body.expires_at:
-                expires_at = body.expires_at
         assigned = await supabase_service.assign_sub_service_to_user(sub_service_id, user_id, assigned_by=admin_uuid, expires_at=expires_at)
         return assigned
     except Exception as e:

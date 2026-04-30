@@ -29,6 +29,33 @@ const getServiceIcon = (serviceName, category) => {
 
   return Globe; // Default icon
 };
+
+/** True when the assignment has an end date in the past (direct assignments with expires_at only). */
+const isAccessExpired = (s) => {
+  if (!s?.expires_at) return false;
+  return new Date(s.expires_at) < new Date();
+};
+
+/** Expiry is soon enough to highlight (≤3 days or &lt;24h for short QA windows). */
+const isExpiryUrgent = (expiresAt) => {
+  if (!expiresAt) return false;
+  const end = new Date(expiresAt);
+  const now = new Date();
+  if (end <= now) return true;
+  const ms = end - now;
+  if (ms < 24 * 60 * 60 * 1000) return true;
+  return Math.ceil(ms / (1000 * 60 * 60 * 24)) <= 3;
+};
+
+const formatExpiryDisplay = (expiresAt) => {
+  if (!expiresAt) return '';
+  const end = new Date(expiresAt);
+  const now = new Date();
+  const ms = end - now;
+  if (ms > 0 && ms < 24 * 60 * 60 * 1000) return end.toLocaleString();
+  return end.toLocaleDateString();
+};
+
 const UserServices = () => {
   const { user } = useAuth();
   const [services, setServices] = useState([]);
@@ -44,12 +71,15 @@ const UserServices = () => {
       if (!user?.id) return;
       const res = await servicesService.getMyServices();
       if (res.success) {
-        const now = new Date();
-        setServices((res.data || []).filter((s) => {
-          if (s.status !== 'active') return false;
-          if (s.expires_at && new Date(s.expires_at) < now) return false;
-          return true;
-        }));
+        // Only drop explicitly inactive panels; treat missing/unknown status as visible (matches admin list).
+        const visible = (res.data || []).filter((s) => String(s.status || 'active').toLowerCase() !== 'inactive');
+        const sorted = [...visible].sort((a, b) => {
+          const ae = isAccessExpired(a) ? 1 : 0;
+          const be = isAccessExpired(b) ? 1 : 0;
+          if (ae !== be) return ae - be;
+          return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+        });
+        setServices(sorted);
       } else {
         setError(res.error?.message || 'Failed to load services');
         toast({ variant: 'destructive', title: 'Error', description: res.error?.message || 'Failed to load services' });
@@ -79,6 +109,14 @@ const UserServices = () => {
   const handleLaunch = async (service) => {
     if (!user?.id) {
       toast({ variant: 'destructive', title: 'Error', description: 'User not authenticated' });
+      return;
+    }
+    if (isAccessExpired(service)) {
+      toast({
+        variant: 'destructive',
+        title: 'Access expired',
+        description: 'Contact your administrator to renew access.',
+      });
       return;
     }
 
@@ -136,7 +174,8 @@ const UserServices = () => {
       (s.category || '').toLowerCase().includes(query);
   });
 
-  const categories = [...new Set(services.map(s => s.category || 'Uncategorized'))];
+  const activeCount = services.filter((s) => !isAccessExpired(s)).length;
+  const expiredCount = services.filter((s) => isAccessExpired(s)).length;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -162,27 +201,27 @@ const UserServices = () => {
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatCard
-          title="Total Services"
+          title="Total Panels"
           value={services.length}
-          change="Available to launch"
+          change="Assigned to you"
           changeType="neutral"
           icon={AppWindow}
           gradient="bg-gradient-to-br from-blue-500 to-blue-600"
         />
         <StatCard
-          title="Categories"
-          value={categories.length}
-          change="Service types"
-          changeType="neutral"
-          icon={Grid3x3}
+          title="Active"
+          value={activeCount}
+          change="Ready to launch"
+          changeType="positive"
+          icon={Activity}
           gradient="bg-gradient-to-br from-green-500 to-green-600"
         />
         <StatCard
-          title="Active"
-          value={services.length}
-          change="Ready to use"
-          changeType="positive"
-          icon={Activity}
+          title="Access expired"
+          value={expiredCount}
+          change="Contact admin to renew"
+          changeType={expiredCount > 0 ? 'neutral' : 'positive'}
+          icon={Grid3x3}
           gradient="bg-gradient-to-br from-orange-500 to-orange-600"
         />
       </div>
@@ -217,12 +256,12 @@ const UserServices = () => {
               <AppWindow className="w-8 h-8 text-gray-400" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-              {searchQuery ? 'No Services Found' : 'No Active Services'}
+              {searchQuery ? 'No Services Found' : 'No Panels Yet'}
             </h3>
             <p className="text-gray-500 dark:text-gray-400 max-w-sm">
               {searchQuery
                 ? 'Try adjusting your search query to find services.'
-                : 'No active services assigned. Contact your administrator.'}
+                : 'No panels assigned. Contact your administrator.'}
             </p>
             {searchQuery && (
               <Button
@@ -239,12 +278,13 @@ const UserServices = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredServices.map((s) => {
             const ServiceIcon = getServiceIcon(s.name, s.category);
+            const expired = isAccessExpired(s);
 
             return (
-              <GlassCard key={s.id} hover>
-                <div className="p-5">
+              <GlassCard key={s.id} hover={!expired} className={expired ? 'opacity-60' : ''}>
+                <div className={`p-5 ${expired ? 'select-none' : ''}`}>
                   <div className="flex items-start gap-3 mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-orange-600 flex items-center justify-center flex-shrink-0">
+                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-orange-600 flex items-center justify-center flex-shrink-0 ${expired ? 'grayscale' : ''}`}>
                       <ServiceIcon className="w-6 h-6 text-white" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -252,7 +292,9 @@ const UserServices = () => {
                         {s.name}
                       </h3>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Click launch to access securely
+                        {expired
+                          ? 'Access expired — contact your administrator to renew.'
+                          : 'Click launch to access securely'}
                       </p>
                     </div>
                   </div>
@@ -266,38 +308,40 @@ const UserServices = () => {
                     </div>
                     {s.expires_at && (
                       <div className={`p-3 rounded-lg flex justify-between items-center ${
-                        (() => {
-                          const days = Math.ceil((new Date(s.expires_at) - new Date()) / (1000 * 60 * 60 * 24));
-                          return days <= 3 ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' : 'bg-gray-50/80 dark:bg-gray-800/50';
-                        })()
+                        expired || (!expired && isExpiryUrgent(s.expires_at))
+                          ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
+                          : 'bg-gray-50/80 dark:bg-gray-800/50'
                       }`}>
                         <div className={`text-xs ${
-                          (() => {
-                            const days = Math.ceil((new Date(s.expires_at) - new Date()) / (1000 * 60 * 60 * 24));
-                            return days <= 3 ? 'text-red-600 dark:text-red-400 font-medium' : 'text-gray-500 dark:text-gray-400';
-                          })()
-                        }`}>Expires</div>
+                          expired || (!expired && isExpiryUrgent(s.expires_at))
+                            ? 'text-red-600 dark:text-red-400 font-medium'
+                            : 'text-gray-500 dark:text-gray-400'
+                        }`}>{expired ? 'Expired on' : 'Expires'}</div>
                         <div className={`text-xs font-medium ${
-                           (() => {
-                            const days = Math.ceil((new Date(s.expires_at) - new Date()) / (1000 * 60 * 60 * 24));
-                            return days <= 3 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white';
-                          })()
+                          expired || (!expired && isExpiryUrgent(s.expires_at))
+                            ? 'text-red-600 dark:text-red-400'
+                            : 'text-gray-900 dark:text-white'
                         }`}>
-                          {new Date(s.expires_at).toLocaleDateString()}
+                          {expired ? new Date(s.expires_at).toLocaleString() : formatExpiryDisplay(s.expires_at)}
                         </div>
                       </div>
                     )}
                   </div>
 
                   <Button
+                    type="button"
                     onClick={() => handleLaunch(s)}
-                    disabled={launching === s.id}
-                    className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-md gap-2"
+                    disabled={expired || launching === s.id}
+                    className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-md gap-2 disabled:opacity-60 disabled:pointer-events-none"
                   >
                     {launching === s.id ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
                         Launching...
+                      </>
+                    ) : expired ? (
+                      <>
+                        Access expired
                       </>
                     ) : (
                       <>

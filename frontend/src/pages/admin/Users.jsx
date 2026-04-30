@@ -17,6 +17,95 @@ import PageSkeleton from '../../components/common/PageSkeleton';
 import fingerprintsService from '../../services/fingerprints.service';
 import { Fingerprint } from 'lucide-react';
 
+/** Direct assignment still holds the "Assign New Panel" slot unless expired. Group access always holds. */
+const assignmentBlocksPanelDropdown = (row) => {
+  if (!row) return false;
+  const src = row.assignment_source || 'direct';
+  if (typeof src === 'string' && src.startsWith('group')) return true;
+  if (!row.expires_at) return true;
+  return new Date(row.expires_at) > new Date();
+};
+
+/** Sub-service slot is held while assignment has no expiry or expiry is in the future. */
+const subAssignmentBlocksDropdown = (row) => {
+  if (!row) return false;
+  if (!row.expires_at) return true;
+  return new Date(row.expires_at) > new Date();
+};
+
+const getAssignmentAccessMeta = (s) => {
+  const src = s.assignment_source || 'direct';
+  const from = s.assigned_at ? new Date(s.assigned_at).toLocaleString() : '—';
+  const to = s.expires_at ? new Date(s.expires_at).toLocaleString() : null;
+  const range = to ? `${from} → ${to}` : `${from} → No expiry`;
+  let badge = { label: 'Active', className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200' };
+  if (typeof src === 'string' && src.startsWith('group') && !s.expires_at) {
+    badge = { label: 'Group access', className: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200' };
+  } else if (!s.expires_at) {
+    badge = { label: 'No end date', className: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200' };
+  } else {
+    const end = new Date(s.expires_at);
+    const now = new Date();
+    if (end <= now) {
+      badge = { label: 'Expired', className: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200' };
+    } else {
+      const msLeft = end - now;
+      const mins = Math.ceil(msLeft / (1000 * 60));
+      const hours = Math.ceil(msLeft / (1000 * 60 * 60));
+      const days = Math.max(0, Math.ceil(msLeft / (1000 * 60 * 60 * 24)));
+      if (mins <= 60) {
+        badge = { label: mins <= 1 ? '< 1 min' : `Expires in ${mins} min`, className: 'bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200' };
+      } else if (hours < 24) {
+        badge = { label: `Expires in ${hours}h`, className: 'bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200' };
+      } else if (days <= 3) {
+        badge = { label: days === 0 ? 'Expires today' : `Expires in ${days}d`, className: 'bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200' };
+      } else {
+        badge = { label: `Expires in ${days} days`, className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200' };
+      }
+    }
+  }
+  return { range, badge, from, to };
+};
+
+/** Format Date for `<input type="datetime-local" />` in local timezone. */
+const toDatetimeLocalValue = (d) => {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+/** Open native date/time UI on click (helps Electron/Chromium when picker does not open on first tap). */
+const openDatetimeLocalPicker = (e) => {
+  const el = e.currentTarget;
+  if (el && typeof el.showPicker === 'function') {
+    try {
+      el.showPicker();
+    } catch {
+      /* InvalidStateError if not user-activated, or unsupported type in older engines */
+    }
+  }
+};
+
+/**
+ * Build assign/renew payload from preset days or custom from/until (local inputs).
+ * @returns {{ durationDays: number } | { expiresAt: string } | { error: string }}
+ */
+const resolveAssignExpiry = (accessMode, assignmentDuration, accessStartLocal, accessEndLocal) => {
+  if (accessMode === 'preset') {
+    const d = parseInt(assignmentDuration, 10);
+    if (Number.isNaN(d) || d < 1) return { error: 'Choose a valid duration preset.' };
+    return { durationDays: d };
+  }
+  const start = accessStartLocal ? new Date(accessStartLocal) : null;
+  const end = accessEndLocal ? new Date(accessEndLocal) : null;
+  if (!end || Number.isNaN(end.getTime())) return { error: 'Set access until date and time.' };
+  const now = new Date();
+  const effectiveStart = start && !Number.isNaN(start.getTime()) ? start : now;
+  if (effectiveStart > now) return { error: 'Access from cannot be in the future.' };
+  if (effectiveStart >= end) return { error: 'Access until must be after access from.' };
+  if (end <= now) return { error: 'Access until must be in the future.' };
+  return { expiresAt: end.toISOString() };
+};
+
 const Users = () => {
   const { users, loading, createUser, updateUser, deleteUser, refresh, getUserDevices, logoutUserDevice } = useUsers();
   const { toast } = useToast();
@@ -37,6 +126,10 @@ const Users = () => {
   const [assignedSubServices, setAssignedSubServices] = useState([]);
   const [selectedServiceId, setSelectedServiceId] = useState('');
   const [assignmentDuration, setAssignmentDuration] = useState('30');
+  /** 'preset' = day dropdown; 'calendar' = from/until datetime-local (+ quick test chips). */
+  const [accessMode, setAccessMode] = useState('preset');
+  const [accessStartLocal, setAccessStartLocal] = useState('');
+  const [accessEndLocal, setAccessEndLocal] = useState('');
   const [selectedParentServiceForSub, setSelectedParentServiceForSub] = useState('');
   const [subServicesOfParent, setSubServicesOfParent] = useState([]);
   const [selectedSubServiceId, setSelectedSubServiceId] = useState('');
@@ -157,8 +250,10 @@ const Users = () => {
   }, [manageOpen, editingUser, activeTab]);
 
   const unassignedServices = React.useMemo(() => {
-    const assignedIds = new Set((assignedServices || []).map((s) => s.id));
-    return (availableServices || []).filter((s) => !assignedIds.has(s.id));
+    return (availableServices || []).filter((svc) => {
+      const row = (assignedServices || []).find((a) => a.id === svc.id);
+      return !assignmentBlocksPanelDropdown(row);
+    });
   }, [availableServices, assignedServices]);
 
   const unassignedProxies = React.useMemo(() => {
@@ -503,10 +598,117 @@ const Users = () => {
             )}
             {activeTab === 'services' && (
               <div className="space-y-4">
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/40 p-4 space-y-3">
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white">Access period (assign &amp; renew)</div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Renew uses the same settings below — switch to <strong>Custom from / until</strong> for exact end times (e.g. 2 minutes for testing).
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={accessMode === 'preset' ? 'default' : 'outline'}
+                      onClick={() => setAccessMode('preset')}
+                    >
+                      Presets (days)
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={accessMode === 'calendar' ? 'default' : 'outline'}
+                      onClick={() => {
+                        setAccessMode('calendar');
+                        const n = new Date();
+                        setAccessStartLocal(toDatetimeLocalValue(n));
+                        setAccessEndLocal(toDatetimeLocalValue(new Date(n.getTime() + 30 * 24 * 60 * 60 * 1000)));
+                      }}
+                    >
+                      Custom from / until
+                    </Button>
+                  </div>
+                  {accessMode === 'preset' ? (
+                    <div className="max-w-xs">
+                      <Label className="text-xs">Duration after assign</Label>
+                      <Select value={assignmentDuration} onValueChange={setAssignmentDuration}>
+                        <SelectTrigger><SelectValue placeholder="Duration" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="7">7 Days</SelectItem>
+                          <SelectItem value="15">15 Days</SelectItem>
+                          <SelectItem value="30">30 Days</SelectItem>
+                          <SelectItem value="90">90 Days</SelectItem>
+                          <SelectItem value="365">1 Year</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Access from (local)</Label>
+                          <Input
+                            type="datetime-local"
+                            value={accessStartLocal}
+                            onChange={(e) => setAccessStartLocal(e.target.value)}
+                            onClick={openDatetimeLocalPicker}
+                            className="bg-white dark:bg-gray-950 cursor-pointer"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Access until (local)</Label>
+                          <Input
+                            type="datetime-local"
+                            value={accessEndLocal}
+                            onChange={(e) => setAccessEndLocal(e.target.value)}
+                            onClick={openDatetimeLocalPicker}
+                            className="bg-white dark:bg-gray-950 cursor-pointer"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            const n = new Date();
+                            setAccessStartLocal(toDatetimeLocalValue(n));
+                            setAccessEndLocal(toDatetimeLocalValue(new Date(n.getTime() + 2 * 60 * 1000)));
+                          }}
+                        >
+                          Test: +2 minutes
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            const n = new Date();
+                            setAccessStartLocal(toDatetimeLocalValue(n));
+                            setAccessEndLocal(toDatetimeLocalValue(new Date(n.getTime() + 60 * 60 * 1000)));
+                          }}
+                        >
+                          +1 hour
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            const n = new Date();
+                            setAccessStartLocal(toDatetimeLocalValue(n));
+                            setAccessEndLocal(toDatetimeLocalValue(new Date(n.getTime() + 7 * 24 * 60 * 60 * 1000)));
+                          }}
+                        >
+                          +7 days
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Assign New Panel</Label>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
                         <SelectTrigger><SelectValue placeholder="Select a panel" /></SelectTrigger>
                         <SelectContent>
@@ -524,31 +726,25 @@ const Users = () => {
                             .map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
                         </SelectContent>
                       </Select>
-                      <Select value={assignmentDuration} onValueChange={setAssignmentDuration}>
-                        <SelectTrigger><SelectValue placeholder="Duration" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="7">7 Days</SelectItem>
-                          <SelectItem value="15">15 Days</SelectItem>
-                          <SelectItem value="30">30 Days</SelectItem>
-                          <SelectItem value="90">90 Days</SelectItem>
-                          <SelectItem value="365">1 Year</SelectItem>
-                        </SelectContent>
-                      </Select>
                       <Button
                         disabled={!selectedServiceId || !editingUser || assigning}
                         onClick={async () => {
                           if (!editingUser) return;
+                          const spec = resolveAssignExpiry(accessMode, assignmentDuration, accessStartLocal, accessEndLocal);
+                          if (spec.error) {
+                            toast({ variant: 'destructive', title: 'Invalid access period', description: spec.error });
+                            return;
+                          }
                           setAssigning(true);
                           const selected = availableServices.find((s) => s.id === selectedServiceId);
                           try {
-                            const result = await servicesService.assignServiceToUser(
-                              selectedServiceId, 
-                              editingUser.id, 
-                              undefined,
-                              parseInt(assignmentDuration)
-                            );
+                            const opts = 'expiresAt' in spec ? { expiresAt: spec.expiresAt } : { durationDays: spec.durationDays };
+                            const result = await servicesService.assignServiceToUser(selectedServiceId, editingUser.id, undefined, opts);
                             if (result.success) {
-                              toast({ title: 'Panel assigned', description: selected ? `${selected.name} assigned` : 'Assigned' });
+                              const desc = 'expiresAt' in spec
+                                ? `Until ${new Date(spec.expiresAt).toLocaleString()}`
+                                : `${spec.durationDays} days`;
+                              toast({ title: 'Panel assigned', description: selected ? `${selected.name} — ${desc}` : desc });
                               const res = await servicesService.getUserServices(editingUser.id);
                               if (res.success) setAssignedServices(res.data || []);
                               setSelectedServiceId('');
@@ -596,7 +792,7 @@ const Users = () => {
                             />
                           </div>
                           {(subServicesOfParent || [])
-                            .filter((sub) => !(assignedSubServices || []).some((a) => a.id === sub.id))
+                            .filter((sub) => !(assignedSubServices || []).some((a) => a.id === sub.id && subAssignmentBlocksDropdown(a)))
                             .filter(sub => sub.name?.toLowerCase().includes(subPanelSearch.toLowerCase()))
                             .map((sub) => (
                             <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
@@ -607,11 +803,20 @@ const Users = () => {
                         disabled={!selectedSubServiceId || !editingUser || assigningSub}
                         onClick={async () => {
                           if (!editingUser) return;
+                          const spec = resolveAssignExpiry(accessMode, assignmentDuration, accessStartLocal, accessEndLocal);
+                          if (spec.error) {
+                            toast({ variant: 'destructive', title: 'Invalid access period', description: spec.error });
+                            return;
+                          }
                           setAssigningSub(true);
                           try {
-                            const result = await servicesService.assignSubServiceToUser(selectedSubServiceId, editingUser.id, { duration_days: parseInt(assignmentDuration) });
+                            const subOpts = 'expiresAt' in spec ? { expires_at: spec.expiresAt } : { duration_days: spec.durationDays };
+                            const result = await servicesService.assignSubServiceToUser(selectedSubServiceId, editingUser.id, subOpts);
                             if (result.success) {
-                              toast({ title: 'Sub panel assigned' });
+                              const desc = 'expiresAt' in spec
+                                ? `Until ${new Date(spec.expiresAt).toLocaleString()}`
+                                : `${spec.durationDays} days`;
+                              toast({ title: 'Sub panel assigned', description: desc });
                               const subRes = await servicesService.getUserSubServices(editingUser.id);
                               if (subRes.success) setAssignedSubServices(subRes.data || []);
                               setSelectedSubServiceId('');
@@ -668,19 +873,53 @@ const Users = () => {
                             return serviceSort.order === 'asc' ? cmp : -cmp;
                           })
                           .slice((servicesPage - 1) * pageSize, servicesPage * pageSize)
-                          .map((s) => (
-                            <div key={s._type + '-' + s.id} className="p-3 rounded border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/60">
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <div className="font-medium flex items-center gap-2">
+                          .map((s) => {
+                            const { range, badge } = getAssignmentAccessMeta(s);
+                            return (
+                            <div key={s._type + '-' + s.id} className="p-3 rounded border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/60 space-y-2">
+                              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-medium flex flex-wrap items-center gap-2">
                                     {s.name}
                                     {s._type === 'sub_service' && <Badge variant="secondary" className="text-xs">Sub-service</Badge>}
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.className}`}>{badge.label}</span>
                                   </div>
-                                  <div className="text-xs text-gray-500">Assigned: {s.assigned_at ? new Date(s.assigned_at).toLocaleString() : '—'} • Status: {s.status || 'active'}</div>
+                                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 space-y-0.5">
+                                    <div><span className="font-medium text-gray-600 dark:text-gray-300">Access:</span> {range}</div>
+                                    <div>Panel status: {s.status || 'active'}</div>
+                                  </div>
                                 </div>
-                                <div className="flex gap-2">
+                                <div className="flex flex-wrap gap-2 shrink-0">
                                   {s._type === 'service' ? (
-                                    <Button variant="outline" size="sm" onClick={async () => {
+                                    <>
+                                      <Button variant="default" size="sm" className="bg-blue-600 hover:bg-blue-700" disabled={!editingUser || assigning} onClick={async () => {
+                                        if (!editingUser) return;
+                                        const spec = resolveAssignExpiry(accessMode, assignmentDuration, accessStartLocal, accessEndLocal);
+                                        if (spec.error) {
+                                          toast({ variant: 'destructive', title: 'Invalid access period', description: spec.error });
+                                          return;
+                                        }
+                                        setAssigning(true);
+                                        try {
+                                          const opts = 'expiresAt' in spec ? { expiresAt: spec.expiresAt } : { durationDays: spec.durationDays };
+                                          const result = await servicesService.assignServiceToUser(s.id, editingUser.id, undefined, opts);
+                                          if (result.success) {
+                                            const desc = 'expiresAt' in spec
+                                              ? `Until ${new Date(spec.expiresAt).toLocaleString()}`
+                                              : `${spec.durationDays} days`;
+                                            toast({ title: 'Access renewed', description: `${s.name} — ${desc}` });
+                                            const [res, subRes] = await Promise.all([servicesService.getUserServices(editingUser.id), servicesService.getUserSubServices(editingUser.id)]);
+                                            if (res.success) setAssignedServices(res.data || []);
+                                            if (subRes.success) setAssignedSubServices(subRes.data || []);
+                                          }
+                                        } catch (err) {
+                                          const msg = (err?.response?.data?.detail) || 'Could not renew';
+                                          toast({ variant: 'destructive', title: 'Renew failed', description: msg });
+                                        } finally {
+                                          setAssigning(false);
+                                        }
+                                      }}>Renew</Button>
+                                      <Button variant="outline" size="sm" onClick={async () => {
                                       const result = await servicesService.unassignServiceFromUser(s.id, editingUser.id);
                                       if (result.success) {
                                         const [res, subRes] = await Promise.all([servicesService.getUserServices(editingUser.id), servicesService.getUserSubServices(editingUser.id)]);
@@ -690,8 +929,36 @@ const Users = () => {
                                         toast({ variant: 'destructive', title: 'Unassign failed' });
                                       }
                                     }}>Unassign</Button>
+                                    </>
                                   ) : (
-                                    <Button variant="outline" size="sm" onClick={async () => {
+                                    <>
+                                      <Button variant="default" size="sm" className="bg-blue-600 hover:bg-blue-700" disabled={!editingUser || assigningSub} onClick={async () => {
+                                        if (!editingUser) return;
+                                        const spec = resolveAssignExpiry(accessMode, assignmentDuration, accessStartLocal, accessEndLocal);
+                                        if (spec.error) {
+                                          toast({ variant: 'destructive', title: 'Invalid access period', description: spec.error });
+                                          return;
+                                        }
+                                        setAssigningSub(true);
+                                        try {
+                                          const subOpts = 'expiresAt' in spec ? { expires_at: spec.expiresAt } : { duration_days: spec.durationDays };
+                                          const result = await servicesService.assignSubServiceToUser(s.id, editingUser.id, subOpts);
+                                          if (result.success) {
+                                            const desc = 'expiresAt' in spec
+                                              ? `Until ${new Date(spec.expiresAt).toLocaleString()}`
+                                              : `${spec.durationDays} days`;
+                                            toast({ title: 'Sub-panel access renewed', description: `${s.name} — ${desc}` });
+                                            const subRes = await servicesService.getUserSubServices(editingUser.id);
+                                            if (subRes.success) setAssignedSubServices(subRes.data || []);
+                                          }
+                                        } catch (err) {
+                                          const msg = (err?.response?.data?.detail) || 'Could not renew';
+                                          toast({ variant: 'destructive', title: 'Renew failed', description: msg });
+                                        } finally {
+                                          setAssigningSub(false);
+                                        }
+                                      }}>Renew</Button>
+                                      <Button variant="outline" size="sm" onClick={async () => {
                                       const result = await servicesService.unassignSubServiceFromUser(s.id, editingUser.id);
                                       if (result.success) {
                                         const subRes = await servicesService.getUserSubServices(editingUser.id);
@@ -700,11 +967,13 @@ const Users = () => {
                                         toast({ variant: 'destructive', title: 'Unassign failed' });
                                       }
                                     }}>Unassign</Button>
+                                    </>
                                   )}
                                 </div>
                               </div>
                             </div>
-                          ))}
+                            );
+                          })}
                         {(assignedServices?.length || 0) + (assignedSubServices?.length || 0) > pageSize && (
                           <div className="flex justify-end gap-2 pt-2">
                             <Button variant="outline" size="sm" disabled={servicesPage === 1} onClick={() => setServicesPage((p) => Math.max(1, p - 1))}>Prev</Button>
