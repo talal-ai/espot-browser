@@ -136,6 +136,22 @@ interface UserSession {
 
 const userSessions = new Map<string, UserSession>();
 const activeServiceWindows = new Map<string, BrowserWindow>();
+/** Service shell window id → userId (guest <webview> auth must resolve parent window). */
+const serviceWindowOwnerUserId = new Map<number, string>();
+
+/** Walk guest webviews up to the host window for app.on('login'). */
+function browserWindowFromLoginWebContents(wc: Electron.WebContents): BrowserWindow | null {
+  let current: Electron.WebContents | null = wc;
+  const seen = new Set<number>();
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    const win = BrowserWindow.fromWebContents(current);
+    if (win) return win;
+    current =
+      typeof current.getHostWebContents === 'function' ? current.getHostWebContents() : null;
+  }
+  return null;
+}
 
 // Create the main window
 function createMainWindow() {
@@ -368,12 +384,9 @@ function createMainWindow() {
           console.error(`[ESPOT] ❌ Failed to apply proxy to webview partition ${partition}:`, err);
         });
       } else {
-        // IMPORTANT: If no proxy is active, explicitly CLEAR any persisted proxy settings
-        // This prevents "zombie" proxies from previous sessions causing 407 errors
-        ses.setProxy({ proxyRules: '' }).then(() => {
-           // console.log(`[ESPOT] 🧹 Cleared proxy for webview partition (no active proxy): ${partition}`);
-        }).catch(err => {
-          console.error(`[ESPOT] ❌ Failed to clear proxy for webview partition ${partition}:`, err);
+        // Force direct — empty rules can still follow OS proxy; direct:// clears persisted zombie proxies
+        ses.setProxy({ proxyRules: 'direct://' }).catch((err) => {
+          console.error(`[ESPOT] ❌ Failed to set direct proxy for webview partition ${partition}:`, err);
         });
       }
 
@@ -486,37 +499,56 @@ app.on('window-all-closed', () => {
  */
 function setupProxyAuthHandler() {
   app.on('login', (event, webContents, details, authInfo, callback) => {
-    console.log('[ESPOT] 🔐 Auth request:', authInfo.isProxy ? 'Proxy' : 'Server', details.url);
-    if (authInfo.isProxy) {
+    if (!authInfo.isProxy) {
+      return;
+    }
+
+    const pageUrl = details.url;
+    console.log(
+      `[ESPOT] 🔐 Proxy auth required (${authInfo.host}:${authInfo.port}) for request: ${pageUrl}`
+    );
+
+    if (activeProxyConfig?.username && activeProxyConfig?.password) {
       event.preventDefault();
+      console.log('[ESPOT] 🔐 Providing proxy credentials (global)');
+      callback(activeProxyConfig.username, activeProxyConfig.password);
+      return;
+    }
 
-      // Check if there's an active global proxy with credentials
-      console.log('[ESPOT] Checking credentials. ActiveProxy:', activeProxyConfig ? 'Yes' : 'No');
-      if (activeProxyConfig && activeProxyConfig.username && activeProxyConfig.password) {
-        console.log('🔐 Providing proxy authentication (global)');
-        callback(activeProxyConfig.username, activeProxyConfig.password);
-        return;
-      }
-
-      // Check if the webContents belongs to a user session with proxy credentials
-      const browserWindow = BrowserWindow.fromWebContents(webContents);
-      if (browserWindow) {
-        for (const [userId, userSession] of userSessions) {
-          if (userSession.window === browserWindow &&
-            userSession.proxyConfig &&
-            userSession.proxyConfig.username &&
-            userSession.proxyConfig.password) {
-            console.log(`🔐 Providing proxy authentication for user ${userId}`);
-            callback(userSession.proxyConfig.username, userSession.proxyConfig.password);
-            return;
-          }
+    const hostWin = browserWindowFromLoginWebContents(webContents);
+    if (hostWin) {
+      for (const [userId, userSession] of userSessions) {
+        if (
+          userSession.window === hostWin &&
+          userSession.proxyConfig?.username &&
+          userSession.proxyConfig?.password
+        ) {
+          event.preventDefault();
+          console.log(`[ESPOT] 🔐 Providing proxy credentials (user session ${userId})`);
+          callback(userSession.proxyConfig.username, userSession.proxyConfig.password);
+          return;
         }
       }
 
-      // No credentials available
-      console.warn('⚠️ Proxy authentication requested but no credentials configured for:', details.url);
-      callback('', ''); // Provide empty credentials
+      const svcUserId = serviceWindowOwnerUserId.get(hostWin.id);
+      if (svcUserId) {
+        const pc = userSessions.get(svcUserId)?.proxyConfig;
+        if (pc?.username && pc?.password) {
+          event.preventDefault();
+          console.log(`[ESPOT] 🔐 Providing proxy credentials (service window user ${svcUserId})`);
+          callback(pc.username, pc.password);
+          return;
+        }
+      }
     }
+
+    console.warn(
+      '[ESPOT] ⚠️ Proxy requires login but no ESPOT proxy credentials are set. ' +
+        'Add username/password on your proxy in Settings, use a proxy that does not require auth, ' +
+        'or clear Windows system proxy if traffic should be direct. ' +
+        `ActiveProxy: ${activeProxyConfig ? 'Yes' : 'No'}. Page: ${pageUrl}`
+    );
+    // Do NOT preventDefault / callback('', '') — that causes Chromium to retry and ERR_TOO_MANY_RETRIES
   });
 }
 
@@ -1253,15 +1285,20 @@ function setupIpcHandlers() {
         const spoofFile = spoofingPreloadPath;
         serviceWindow.on('closed', () => {
           try { require('fs').unlinkSync(spoofFile); } catch (_) { }
+          serviceWindowOwnerUserId.delete(serviceWindow.id);
           activeServiceWindows.delete(serviceKey);
         });
       } else {
         serviceWindow.on('closed', () => {
+          serviceWindowOwnerUserId.delete(serviceWindow.id);
           activeServiceWindows.delete(serviceKey);
         });
       }
 
       activeServiceWindows.set(serviceKey, serviceWindow);
+      if (launchData.userId) {
+        serviceWindowOwnerUserId.set(serviceWindow.id, launchData.userId);
+      }
       console.log(`[${launchData.serviceId}] ✅ Service shell window created (hidden)`);
 
       // Apply proxy if active (check user-specific proxy first, then global proxy)
@@ -1276,12 +1313,17 @@ function setupIpcHandlers() {
         }
       }
       
+      const serviceSes = session.fromPartition(servicePartition);
       if (proxyToApply) {
         const proxyRules = `${proxyToApply.protocol}://${proxyToApply.host}:${proxyToApply.port}`;
-        // FIX: Apply proxy to the SAME partition the service window uses (servicePartition)
-        const ses = session.fromPartition(servicePartition);
-        await ses.setProxy({ proxyRules, proxyBypassRules: PROXY_BYPASS_LIST });
+        await serviceSes.setProxy({ proxyRules, proxyBypassRules: PROXY_BYPASS_LIST });
         console.log(`[${launchData.serviceId}] 🛡️ Proxy applied to service window (${proxyToApply.host}:${proxyToApply.port})`);
+      } else {
+        // Persist:service-* partitions keep old proxy rules; force direct when app has no proxy
+        await serviceSes.setProxy({ proxyRules: 'direct://' });
+        console.log(
+          `[${launchData.serviceId}] 🔌 No ESPOT proxy — service session set to direct:// (avoids OS/stale proxy + auth loops)`
+        );
       }
 
       // Track states
@@ -1390,6 +1432,15 @@ function setupIpcHandlers() {
         serviceWindow.webContents.on('did-attach-webview', (_, wvContents) => {
           webviewWC = wvContents;
           console.log(`[${launchData.serviceId}] 🔗 Webview attached to shell`);
+
+          wvContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+            if (isMainFrame) {
+              console.error(
+                `[${launchData.serviceId}] ❌ Webview failed to load:`,
+                { errorCode, errorDescription, validatedURL }
+              );
+            }
+          });
 
           wvContents.on('dom-ready', async () => {
             if (shouldInjectCredentials) {

@@ -37,23 +37,23 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
 (function() {
   'use strict';
   
-  console.log('[ESPOT] Applying fingerprint spoofing profile:', '${profile.id}');
+  console.log('[ESPOT] Applying fingerprint spoofing profile:', ${JSON.stringify(profile.id)});
   
   // ============================================================================
   // 1. USER AGENT & PLATFORM SPOOFING
   // ============================================================================
   Object.defineProperty(navigator, 'userAgent', {
-    get: () => '${profile.user_agent}',
+    get: () => ${JSON.stringify(profile.user_agent)},
     configurable: false
   });
   
   Object.defineProperty(navigator, 'platform', {
-    get: () => '${profile.platform}',
+    get: () => ${JSON.stringify(profile.platform)},
     configurable: false
   });
   
   Object.defineProperty(navigator, 'appVersion', {
-    get: () => '${profile.user_agent.split(' ').slice(1).join(' ')}',
+    get: () => ${JSON.stringify(profile.user_agent.split(' ').slice(1).join(' '))},
     configurable: false
   });
   
@@ -125,7 +125,7 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
   const originalDateTimeFormat = Intl.DateTimeFormat;
   Intl.DateTimeFormat = function(...args) {
     if (args.length === 0 || !args[0]) {
-      args[0] = '${profile.locale}';
+      args[0] = ${JSON.stringify(profile.locale)};
     }
     return new originalDateTimeFormat(...args);
   };
@@ -134,8 +134,8 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
   Object.defineProperty(Intl.DateTimeFormat.prototype, 'resolvedOptions', {
     value: function() {
       const options = originalDateTimeFormat.prototype.resolvedOptions.call(this);
-      options.timeZone = '${profile.timezone}';
-      options.locale = '${profile.locale}';
+      options.timeZone = ${JSON.stringify(profile.timezone)};
+      options.locale = ${JSON.stringify(profile.locale)};
       return options;
     }
   });
@@ -146,29 +146,29 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
   };
   
   Object.defineProperty(navigator, 'language', {
-    get: () => '${profile.language}',
+    get: () => ${JSON.stringify(profile.language)},
     configurable: false
   });
   
   Object.defineProperty(navigator, 'languages', {
-    get: () => ['${profile.language}', 'en'],
+    get: () => [${JSON.stringify(profile.language)}, 'en'],
     configurable: false
   });
   
   // ============================================================================
   // 7. WEBGL SPOOFING (CRITICAL)
   // ============================================================================
-  const webglParams = ${JSON.stringify(profile.webgl_params)};
+  const webglParams = ${JSON.stringify(profile.webgl_params ?? {})};
   
   const getParameterProxyHandler = {
     apply: function(target, thisArg, args) {
       const param = args[0];
       
       // UNMASKED_VENDOR_WEBGL (37445)
-      if (param === 37445) return '${profile.webgl_vendor}';
+      if (param === 37445) return ${JSON.stringify(profile.webgl_vendor)};
       
       // UNMASKED_RENDERER_WEBGL (37446)
-      if (param === 37446) return '${profile.webgl_renderer}';
+      if (param === 37446) return ${JSON.stringify(profile.webgl_renderer)};
       
       // Other WebGL parameters
       const paramMap = {
@@ -212,22 +212,12 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
     };
   }
   
-  // #region agent log - canvas operation counter
-  let canvasOperationCount = 0;
-  // #endregion
-  
   const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
   const originalToBlob = HTMLCanvasElement.prototype.toBlob;
   const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
   
   // Override toDataURL - NON-DESTRUCTIVE VERSION
   HTMLCanvasElement.prototype.toDataURL = function(...args) {
-    // #region agent log - toDataURL entry
-    canvasOperationCount++;
-    const opId = canvasOperationCount;
-    fetch('http://127.0.0.1:7242/ingest/d871142a-87ce-4295-b4cf-a15b09487b66',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'fingerprint-injector.ts:toDataURL',message:'Canvas toDataURL called',data:{opId:opId,width:this.width,height:this.height,pixelCount:this.width*this.height},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C'})}).catch(()=>{});
-    // #endregion
-    
     const context = this.getContext('2d');
     if (context && this.width > 0 && this.height > 0) {
       // Create a NEW canvas to avoid destroying original
@@ -243,20 +233,7 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
       const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
       const data = imageData.data;
       
-      // #region agent log - before noise application
-      const firstPixelBefore = {r:data[0],g:data[1],b:data[2]};
-      // #endregion
-      
-      // Reset RNG for THIS operation (deterministic based on canvas size)
-      const localRng = seededRandom(canvasSeed + this.width * this.height);
-      
-      // #region agent log - RNG state tracking
-      const rngSample1 = localRng();
-      const rngSample2 = localRng();
-      fetch('http://127.0.0.1:7242/ingest/d871142a-87ce-4295-b4cf-a15b09487b66',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'fingerprint-injector.ts:toDataURL',message:'RNG samples',data:{opId:opId,sample1:rngSample1,sample2:rngSample2,seed:canvasSeed,canvasEntropy:this.width*this.height},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,D'})}).catch(()=>{});
-      // Reset again for actual use
       const actualRng = seededRandom(canvasSeed + this.width * this.height);
-      // #endregion
       
       // Add subtle noise to RGB values (not alpha)
       for (let i = 0; i < data.length; i += 4) {
@@ -266,20 +243,11 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
         data[i+2] = Math.max(0, Math.min(255, data[i+2] + noise)); // B
       }
       
-      // #region agent log - after noise application
-      const firstPixelAfter = {r:data[0],g:data[1],b:data[2]};
-      fetch('http://127.0.0.1:7242/ingest/d871142a-87ce-4295-b4cf-a15b09487b66',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'fingerprint-injector.ts:toDataURL',message:'Noise applied',data:{opId:opId,before:firstPixelBefore,after:firstPixelAfter,diff:{r:firstPixelAfter.r-firstPixelBefore.r,g:firstPixelAfter.g-firstPixelBefore.g,b:firstPixelAfter.b-firstPixelBefore.b}},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-      
       // Put noisy data back into temp canvas
       tempCtx.putImageData(imageData, 0, 0);
       
       // Export from temp canvas (original canvas unchanged!)
       const result = tempCanvas.toDataURL(...args);
-      
-      // #region agent log - toDataURL exit
-      fetch('http://127.0.0.1:7242/ingest/d871142a-87ce-4295-b4cf-a15b09487b66',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'fingerprint-injector.ts:toDataURL',message:'toDataURL complete',data:{opId:opId,resultLength:result.length,originalCanvasStillIntact:true},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       
       return result;
     }
@@ -288,12 +256,6 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
   
   // Override toBlob - NON-DESTRUCTIVE VERSION
   HTMLCanvasElement.prototype.toBlob = function(callback, ...args) {
-    // #region agent log - toBlob entry
-    canvasOperationCount++;
-    const opId = canvasOperationCount;
-    fetch('http://127.0.0.1:7242/ingest/d871142a-87ce-4295-b4cf-a15b09487b66',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'fingerprint-injector.ts:toBlob',message:'Canvas toBlob called',data:{opId:opId,width:this.width,height:this.height},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,E'})}).catch(()=>{});
-    // #endregion
-    
     const context = this.getContext('2d');
     if (context && this.width > 0 && this.height > 0) {
       // Create temp canvas
@@ -325,10 +287,6 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
       
       // Export from temp canvas
       tempCanvas.toBlob(callback, ...args);
-      
-      // #region agent log - toBlob exit
-      fetch('http://127.0.0.1:7242/ingest/d871142a-87ce-4295-b4cf-a15b09487b66',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'fingerprint-injector.ts:toBlob',message:'toBlob complete',data:{opId:opId,originalCanvasStillIntact:true},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B,E'})}).catch(()=>{});
-      // #endregion
     } else {
       originalToBlob.call(this, callback, ...args);
     }
@@ -337,7 +295,7 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
   // ============================================================================
   // 9. AUDIO CONTEXT FINGERPRINTING PROTECTION
   // ============================================================================
-  const audioParams = ${JSON.stringify(profile.audio_context)};
+  const audioParams = ${JSON.stringify(profile.audio_context ?? { sample_rate: 48000, base_latency: 0.005 })};
   
   if (window.AudioContext || window.webkitAudioContext) {
     const OriginalAudioContext = window.AudioContext || window.webkitAudioContext;
@@ -466,10 +424,10 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
   }
   
   console.log('[ESPOT] ✅ Fingerprint spoofing applied successfully');
-  console.log('[ESPOT] Profile ID: ${profile.id}');
+  console.log('[ESPOT] Profile ID:', ${JSON.stringify(profile.id)});
   console.log('[ESPOT] User Agent:', navigator.userAgent);
-  console.log('[ESPOT] GPU:', '${profile.webgl_renderer}');
-  console.log('[ESPOT] Screen:', ${profile.screen_width}+'x'+${profile.screen_height});
+  console.log('[ESPOT] GPU:', ${JSON.stringify(profile.webgl_renderer)});
+  console.log('[ESPOT] Screen:', ${JSON.stringify(`${profile.screen_width}x${profile.screen_height}`)});
   
 })();
 `;
