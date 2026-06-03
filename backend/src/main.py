@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="ESPOT Browser API",
     description="Backend API for ESPOT Browser - Advanced Spoofing & Untraceable Browsing",
-    version="1.0.0",
+    version="1.0.21",
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -140,7 +140,7 @@ async def root():
     """Root endpoint"""
     return {
         "message": "ESPOT Browser API",
-        "version": "1.0.0",
+        "version": "1.0.21",
         "status": "running",
         "timestamp": datetime.utcnow().isoformat()
     }
@@ -156,7 +156,7 @@ async def health_check():
             "status": "healthy" if db_connected else "unhealthy",
             "timestamp": datetime.utcnow().isoformat(),
             "database_connected": db_connected,
-            "version": "1.0.0"
+            "version": "1.0.21"
         }
     except Exception as e:
         logger.error(f"Health check failed: {e}")

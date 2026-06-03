@@ -1,6 +1,6 @@
 {
   "name": "espot-browser",
-  "version": "1.0.0",
+  "version": "1.0.21",
   "description": "ESPOT Browser",
   "main": "apps/desktop-electron/src/main.ts",
   "scripts": {
