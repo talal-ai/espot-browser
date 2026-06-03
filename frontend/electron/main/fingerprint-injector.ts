@@ -51,6 +51,11 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
     get: () => ${JSON.stringify(profile.platform)},
     configurable: false
   });
+
+  Object.defineProperty(navigator, 'vendor', {
+    get: () => 'Google Inc.',
+    configurable: false
+  });
   
   Object.defineProperty(navigator, 'appVersion', {
     get: () => ${JSON.stringify(profile.user_agent.split(' ').slice(1).join(' '))},
@@ -141,8 +146,16 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
   });
   
   Date.prototype.getTimezoneOffset = function() {
-    // This is a simplified version - in production you'd calculate based on timezone
-    return -300; // Example: EST offset
+    // Calculate the correct UTC offset from the profile timezone at runtime
+    try {
+      const tz = ${JSON.stringify(profile.timezone)};
+      const now = new Date();
+      const utcMs = now.getTime() + (now.getTimezoneOffset() * 60000);
+      const tzDate = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+      return -Math.round((tzDate.getTime() - utcMs) / 60000);
+    } catch(e) {
+      return 0;
+    }
   };
   
   Object.defineProperty(navigator, 'language', {
@@ -215,9 +228,16 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
   const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
   const originalToBlob = HTMLCanvasElement.prototype.toBlob;
   const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
-  
+
+  // Frames served by Google/reCAPTCHA must NOT have noise — it breaks challenge rendering
+  const _captchaHosts = /(?:^|\.)(?:google\.com|recaptcha\.net|gstatic\.com)$/i;
+  function _isRecaptchaFrame() {
+    try { return _captchaHosts.test(window.location.hostname); } catch(e) { return false; }
+  }
+
   // Override toDataURL - NON-DESTRUCTIVE VERSION
   HTMLCanvasElement.prototype.toDataURL = function(...args) {
+    if (_isRecaptchaFrame()) return originalToDataURL.apply(this, args);
     const context = this.getContext('2d');
     if (context && this.width > 0 && this.height > 0) {
       // Create a NEW canvas to avoid destroying original
@@ -256,6 +276,7 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
   
   // Override toBlob - NON-DESTRUCTIVE VERSION
   HTMLCanvasElement.prototype.toBlob = function(callback, ...args) {
+    if (_isRecaptchaFrame()) { originalToBlob.call(this, callback, ...args); return; }
     const context = this.getContext('2d');
     if (context && this.width > 0 && this.height > 0) {
       // Create temp canvas
@@ -337,11 +358,17 @@ export function generateSpoofingScript(profile: FingerprintProfile): string {
     };
   }
   
-  // Disable RTCPeerConnection to prevent WebRTC leaks
+  // Stub RTCPeerConnection — must NOT throw; reCAPTCHA v3 uses it as a trust signal.
+  // A throwing constructor scores the session as a bot. Return a silent no-op instead.
   if (window.RTCPeerConnection) {
-    window.RTCPeerConnection = function() {
-      throw new Error('RTCPeerConnection is not available');
+    const _OriginalRTC = window.RTCPeerConnection;
+    window.RTCPeerConnection = function(config) {
+      const pc = new _OriginalRTC({ iceServers: [] });
+      // Immediately close so no ICE gathering happens (no IP leak)
+      try { pc.close(); } catch(e) {}
+      return pc;
     };
+    window.RTCPeerConnection.prototype = _OriginalRTC.prototype;
   }
   
   // ============================================================================
