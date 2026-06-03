@@ -34,8 +34,9 @@ jobs:
 
       - name: Build and release
         env:
-          # Prefer repo secret GH_TOKEN (your PAT) if set; otherwise use the built-in Actions token.
-          GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
+          # Built-in Actions token (contents: write above). Do not use secrets.GH_TOKEN here:
+          # a stale PAT in that secret causes 401 Bad credentials during publish.
+          GH_TOKEN: ${{ github.token }}
         run: npm run release
         working-directory: frontend
 
@@ -43,5 +44,5 @@ jobs:
       # So we create as draft then publish here so auto-updater can see the release.
       - name: Publish release (so latest.yml and installers are visible to auto-updater)
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: gh release edit ${{ github.ref_name }} --repo ${{ github.repository }} --draft=false
