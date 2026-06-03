@@ -34,9 +34,8 @@ jobs:
 
       - name: Build and release
         env:
-          # Use the built-in Actions token (no custom PAT secret required).
-          # electron-builder reads GH_TOKEN for GitHub Releases uploads.
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Prefer repo secret GH_TOKEN (your PAT) if set; otherwise use the built-in Actions token.
+          GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
         run: npm run release
         working-directory: frontend
 
@@ -44,5 +43,5 @@ jobs:
       # So we create as draft then publish here so auto-updater can see the release.
       - name: Publish release (so latest.yml and installers are visible to auto-updater)
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
         run: gh release edit ${{ github.ref_name }} --repo ${{ github.repository }} --draft=false
